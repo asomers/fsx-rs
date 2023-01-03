@@ -2,17 +2,16 @@
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
-    num::Wrapping,
     path::PathBuf,
     process
 };
 
-use log::{debug, error, log_enabled, info, Level};
+use log::{debug, error, info};
 use rand::{         
     Rng,            
     RngCore,
     SeedableRng,
-    distributions::{Distribution, Standard, WeightedIndex},
+    distributions::{Distribution, Standard},
     thread_rng
 };  
 use rand_xorshift::XorShiftRng;
@@ -36,6 +35,14 @@ struct Cli {
     #[arg(short = 'c', value_name = "P")]
     closeprob: Option<u64>,
 
+    /// Disable mmap reads
+    #[arg(short = 'R')]
+    nomapread: bool,
+
+    /// Disable mmap writes
+    #[arg(short = 'W')]
+    nomapwrite: bool,
+
     /// Total number of operations to do (default infinity)
     #[arg(short = 'N')]
     numops: Option<u64>,
@@ -43,7 +50,6 @@ struct Cli {
     #[arg(short = 'S')]
     seed: Option<u64>
     // TODO
-    // -d
     // -i
     // -l
     // -m
@@ -59,11 +65,7 @@ struct Cli {
     // -L
     // -O
     // -P
-    // -S
-    // -W
-    // -R
     // -U
-
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -92,11 +94,13 @@ struct Exerciser {
     file_size: u64,
     fname: PathBuf,
     // What the file ought to contain
-    good_buf: Vec<Wrapping<u8>>,
+    good_buf: Vec<u8>,
+    nomapread: bool,
+    nomapwrite: bool,
     numops: Option<u64>,
     opnum: u64,
     // File's original data
-    original_buf: Vec<Wrapping<u8>>,
+    original_buf: Vec<u8>,
     // Use XorShiftRng because it's deterministic and seedable.
     // XXX It might be nicer to use random(3) for full compatibility with the C
     // implementation.
@@ -113,7 +117,7 @@ impl Exerciser {
         if &self.good_buf[offset as usize..offset as usize + size] != &buf[..] {
             error!("miscompare: offset= {:#x}, size = {:#x}", offset, size);
             // TODO: detailed comparison
-            process::exit(0);
+            process::exit(1);
         }
     }
 
@@ -124,6 +128,7 @@ impl Exerciser {
         }
         if size as u64 + offset > self.file_size {
             debug!("{} skipping seek/read past EoF", self.steps);
+            return;
         }
         info!("{} read {:#x} thru {:#x} ({:#x} bytes)", self.steps,
             offset,
@@ -136,7 +141,7 @@ impl Exerciser {
             error!("short read: {:#x} bytes instead of {:#x}", read, size);
             process::exit(1);
         }
-        // TODO: check buffers
+        self.check_buffers(&temp_buf, offset)
     }
 
     fn dowrite(&mut self, offset: u64, size: usize) {
@@ -188,7 +193,7 @@ impl Exerciser {
             }
             self.good_buf[uoff] = (self.steps % 256) as u8;
             if uoff % 2 > 0 {
-                self.good_buf[uoff] += self.original_buf[uoff];
+                self.good_buf[uoff] = self.good_buf[uoff].wrapping_add(self.original_buf[uoff]);
             }
             uoff += 1;
         }
@@ -205,7 +210,7 @@ impl Exerciser {
             if offset + size as u64 > MAXFILELEN {
                 size = usize::try_from(MAXFILELEN - offset).unwrap();
             }
-            if op == Op::MapWrite {
+            if !self.nomapwrite && op == Op::MapWrite {
                 todo!()
             } else {
                 self.dowrite(offset, size);
@@ -219,7 +224,7 @@ impl Exerciser {
             if offset + size as u64 > MAXFILELEN {
                 size = usize::try_from(self.file_size - offset).unwrap();
             }
-            if op == Op::MapRead {
+            if !self.nomapread && op == Op::MapRead {
                 todo!()
             } else {
                 self.doread(offset, size);
@@ -231,20 +236,19 @@ impl Exerciser {
 impl From<Cli> for Exerciser {
     fn from(cli: Cli) -> Self {
         let seed = cli.seed.unwrap_or_else(|| {
-            //let mut seed = [0u8; 16];
             let mut seeder = thread_rng();
-            //seeder.fill_bytes(&mut seed);
-            //seed
             seeder.gen()
         });
+        info!("Using seed {}", seed);
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(&cli.fname)
             .expect("Cannot create file");
-        let mut original_buf = vec![Wrapping::<u8>(80); MAXFILELEN as usize];
-        let mut good_buf = vec![Wrapping::<u8>(0); MAXFILELEN as usize];
+        let mut original_buf = vec![0u8; MAXFILELEN as usize];
+        let good_buf = vec![0u8; MAXFILELEN as usize];
         let mut rng = XorShiftRng::seed_from_u64(seed);
         rng.fill_bytes(&mut original_buf[..]);
         Exerciser{
@@ -252,6 +256,8 @@ impl From<Cli> for Exerciser {
             file_size: 0,
             fname: cli.fname,
             good_buf,
+            nomapread: cli.nomapread,
+            nomapwrite: cli.nomapwrite,
             numops: cli.numops,
             opnum: cli.opnum,
             original_buf,
@@ -263,8 +269,8 @@ impl From<Cli> for Exerciser {
 }
 
 fn main() {
+    env_logger::init();
     let cli = Cli::parse();
     let mut exerciser = Exerciser::from(cli);
-    env_logger::init();
     exerciser.exercise()
 }

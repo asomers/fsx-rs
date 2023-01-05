@@ -157,7 +157,9 @@ impl Exerciser {
         }
     }
 
-    fn doread(&mut self, offset: u64, size: usize ) {
+    fn doread<F>(&mut self, op: &str, offset: u64, size: usize, f: F)
+        where F: Fn(&mut Exerciser, &mut [u8], u64, usize)
+    {
         if size == 0 {
             debug!("{} skipping zero size read", self.steps);
             return;
@@ -166,17 +168,14 @@ impl Exerciser {
             debug!("{} skipping seek/read past EoF", self.steps);
             return;
         }
-        info!("{} read {:#x} thru {:#x} ({:#x} bytes)", self.steps,
+        info!("{} {} {:#x} thru {:#x} ({:#x} bytes)",
+            self.steps,
+            op,
             offset,
             offset + size as u64,
             size);
-        self.file.seek(SeekFrom::Start(offset)).unwrap();
         let mut temp_buf = vec![0u8; size];
-        let read = self.file.read(&mut temp_buf[..]).unwrap();
-        if read < size {
-            error!("short read: {:#x} bytes instead of {:#x}", read, size);
-            process::exit(1);
-        }
+        f(self, &mut temp_buf[..], offset, size);
         self.check_buffers(&temp_buf, offset)
     }
 
@@ -269,6 +268,19 @@ impl Exerciser {
         )
     }
 
+    fn doread1(&mut self, buf: &mut [u8], offset: u64, size: usize) {
+        self.file.seek(SeekFrom::Start(offset)).unwrap();
+        let read = self.file.read(buf).unwrap();
+        if read < size {
+            error!("short read: {:#x} bytes instead of {:#x}", read, size);
+            process::exit(1);
+        }
+    }
+
+    fn read(&mut self, offset: u64, size: usize) {
+        self.doread(&"read", offset, size, Self::doread1)
+    }
+
     fn step(&mut self) {
         let op: Op = self.rng.gen();
         self.steps += 1;
@@ -297,7 +309,7 @@ impl Exerciser {
             if !self.nomapread && op == Op::MapRead {
                 todo!()
             } else {
-                self.doread(offset, size);
+                self.read(offset, size);
             }
         }
     }

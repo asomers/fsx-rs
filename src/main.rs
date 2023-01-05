@@ -166,6 +166,25 @@ impl Exerciser {
         }
     }
 
+    fn domapread(&mut self, buf: &mut [u8], offset: u64, size: usize) {
+        let page_mask = Self::getpagesize() as usize - 1;
+        let pg_offset = offset as usize & page_mask;
+        let map_size = pg_offset + size;
+        unsafe {
+            let p = mmap(
+                None,
+                map_size.try_into().unwrap(),
+                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
+                self.file.as_raw_fd(),
+                offset as i64 - pg_offset as i64
+            ).unwrap();
+            (p as *mut u8).offset(pg_offset as isize)
+                .copy_to(buf.as_mut_ptr(), size);
+            Self::check_eofpage(offset, self.file_size, p, size);
+        }
+    }
+
     fn domapwrite(&mut self, cur_file_size: u64, size: usize, offset: u64) {
         if self.file_size > cur_file_size {
             self.file.set_len(self.file_size).unwrap();
@@ -286,6 +305,10 @@ impl Exerciser {
         unsafe { libc::getpagesize() }
     }
 
+    fn mapread(&mut self, offset: u64, size: usize) {
+        self.read_like(&"mapread", offset, size, Self::domapread)
+    }
+
     fn mapwrite(&mut self, offset: u64, size: usize) {
         self.write_like(&"mapwrite", offset, size, Self::domapwrite)
     }
@@ -320,7 +343,7 @@ impl Exerciser {
                 size = usize::try_from(self.file_size - offset).unwrap();
             }
             if !self.nomapread && op == Op::MapRead {
-                todo!()
+                self.mapread(offset, size);
             } else {
                 self.read(offset, size);
             }

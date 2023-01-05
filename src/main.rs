@@ -17,9 +17,11 @@ use rand::{
     distributions::{Distribution, Standard},
     thread_rng
 };  
-use rand_xorshift::XorShiftRng;
 
 use clap::Parser;
+
+mod prng;
+use prng::OsPRng;
 
 const MAXFILELEN: u64 = 256 * 1024;
 const MAXOPLEN: usize = 64 * 1024;
@@ -51,7 +53,7 @@ struct Cli {
     numops: Option<u64>,
     /// Seed for RNG
     #[arg(short = 'S')]
-    seed: Option<u64>
+    seed: Option<u32>
     // TODO
     // -i
     // -l
@@ -82,7 +84,10 @@ enum Op {
 
 impl Distribution<Op> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
-        match rng.gen_range(0..=4) {
+        // Manually handle the modulo division, rather than using
+        // RngCore::gen_range, for compatibility with the C-based FSX
+        let x = rng.next_u64() % 5;
+        match x {
             0 => Op::Read,
             1 => Op::Write,
             2 => Op::MapRead,
@@ -104,11 +109,9 @@ struct Exerciser {
     opnum: u64,
     // File's original data
     original_buf: Vec<u8>,
-    // Use XorShiftRng because it's deterministic and seedable.
-    // XXX It might be nicer to use random(3) for full compatibility with the C
-    // implementation.
-    rng: XorShiftRng,
-    seed: u64,
+    // Use OsPRng for full backwards-compatibility with the C fsx
+    rng: OsPRng,
+    seed: u32,
     // Number of steps completed so far
     steps: u64,
     file: File
@@ -237,7 +240,7 @@ impl Exerciser {
             self.steps,
             op,
             offset,
-            offset + size as u64,
+            offset + size as u64 - 1,
             size);
         let mut temp_buf = vec![0u8; size];
         f(self, &mut temp_buf[..], offset, size);
@@ -257,7 +260,7 @@ impl Exerciser {
             self.steps,
             op,
             offset,
-            offset + size as u64,
+            offset + size as u64 - 1,
             size);
 
         self.gendata(offset, size);
@@ -372,7 +375,7 @@ impl From<Cli> for Exerciser {
             .expect("Cannot create file");
         let mut original_buf = vec![0u8; MAXFILELEN as usize];
         let good_buf = vec![0u8; MAXFILELEN as usize];
-        let mut rng = XorShiftRng::seed_from_u64(seed);
+        let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
         rng.fill_bytes(&mut original_buf[..]);
         Exerciser{
             file,

@@ -157,7 +157,53 @@ impl Exerciser {
         }
     }
 
-    fn doread<F>(&mut self, op: &str, offset: u64, size: usize, f: F)
+    fn doread(&mut self, buf: &mut [u8], offset: u64, size: usize) {
+        self.file.seek(SeekFrom::Start(offset)).unwrap();
+        let read = self.file.read(buf).unwrap();
+        if read < size {
+            error!("short read: {:#x} bytes instead of {:#x}", read, size);
+            process::exit(1);
+        }
+    }
+
+    fn domapwrite(&mut self, cur_file_size: u64, size: usize, offset: u64) {
+        if self.file_size > cur_file_size {
+            self.file.set_len(self.file_size).unwrap();
+        }
+        let buf = &self.good_buf[offset as usize..offset as usize + size];
+        let page_mask = Self::getpagesize() as usize - 1;
+        let pg_offset = offset as usize & page_mask;
+        let map_size = pg_offset + size;
+        // Safety: good luck proving it's safe.
+        unsafe {
+            let p = mmap(
+                None,
+                map_size.try_into().unwrap(),
+                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
+                self.file.as_raw_fd(),
+                offset as i64 - pg_offset as i64
+            ).unwrap();
+            ((p as *mut u8).offset(pg_offset as isize))
+                .copy_from(buf.as_ptr(), size);
+            msync(p, map_size, MsFlags::MS_SYNC).unwrap();
+            Self::check_eofpage(offset, self.file_size, p, size);
+            munmap(p, map_size).unwrap();
+        }
+    }
+
+    fn dowrite(&mut self, _cur_file_size: u64, size: usize, offset: u64) {
+        let buf = &self.good_buf[offset as usize..offset as usize + size];
+        self.file.seek(SeekFrom::Start(offset)).unwrap();
+        let written = self.file.write(&buf).unwrap();
+        if written != size {
+            error!("short write: {:#x} bytes instead of {:#x}", written, size);
+            process::exit(1);
+        }
+    }
+
+    /// Wrapper around read-like operations
+    fn read_like<F>(&mut self, op: &str, offset: u64, size: usize, f: F)
         where F: Fn(&mut Exerciser, &mut [u8], u64, usize)
     {
         if size == 0 {
@@ -179,8 +225,9 @@ impl Exerciser {
         self.check_buffers(&temp_buf, offset)
     }
 
-    fn dowrite<F>(&mut self, op: &str, offset: u64, size: usize, f: F)
-        where F: Fn(&File, u64, u64, &[u8], u64)
+    /// Wrapper around write-like operations.
+    fn write_like<F>(&mut self, op: &str, offset: u64, size: usize, f: F)
+        where F: Fn(&mut Exerciser, u64, usize, u64)
     {
         if size == 0 {
             debug!("{} skipping zero size write", self.steps);
@@ -203,7 +250,7 @@ impl Exerciser {
             }
             self.file_size = offset + size as u64;
         }
-        f(&self.file, cur_file_size, self.file_size, &self.good_buf[offset as usize..offset as usize + size], offset)
+        f(self, cur_file_size, size, offset)
     }
 
     fn exercise(&mut self) {
@@ -240,45 +287,11 @@ impl Exerciser {
     }
 
     fn mapwrite(&mut self, offset: u64, size: usize) {
-        self.dowrite(&"mapwrite", offset, size,
-             |file, cur_file_size, file_size, buf, offset| {
-                if file_size > cur_file_size {
-                    file.set_len(file_size).unwrap();
-                }
-                let page_mask = Self::getpagesize() as usize - 1;
-                let pg_offset = offset as usize & page_mask;
-                let map_size = pg_offset + size;
-                // Safety: good luck proving it's safe.
-                unsafe {
-                    let p = mmap(
-                        None,
-                        map_size.try_into().unwrap(),
-                        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                        MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
-                        file.as_raw_fd(),
-                        offset as i64 - pg_offset as i64
-                    ).unwrap();
-                    ((p as *mut u8).offset(pg_offset as isize))
-                        .copy_from(buf.as_ptr(), buf.len());
-                    msync(p, map_size, MsFlags::MS_SYNC).unwrap();
-                    Self::check_eofpage(offset, file_size, p, size);
-                    munmap(p, map_size).unwrap();
-                }
-            }
-        )
-    }
-
-    fn doread1(&mut self, buf: &mut [u8], offset: u64, size: usize) {
-        self.file.seek(SeekFrom::Start(offset)).unwrap();
-        let read = self.file.read(buf).unwrap();
-        if read < size {
-            error!("short read: {:#x} bytes instead of {:#x}", read, size);
-            process::exit(1);
-        }
+        self.write_like(&"mapwrite", offset, size, Self::domapwrite)
     }
 
     fn read(&mut self, offset: u64, size: usize) {
-        self.doread(&"read", offset, size, Self::doread1)
+        self.read_like(&"read", offset, size, Self::doread)
     }
 
     fn step(&mut self) {
@@ -315,15 +328,7 @@ impl Exerciser {
     }
 
     fn write(&mut self, offset: u64, size: usize) {
-        self.dowrite(&"write", offset, size, |mut file, _, _, buf, offset| {
-            let size = buf.len();
-            file.seek(SeekFrom::Start(offset)).unwrap();
-            let written = file.write(&buf).unwrap();
-            if written != size {
-                error!("short write: {:#x} bytes instead of {:#x}", written, size);
-                process::exit(1);
-            }
-        })
+        self.write_like(&"write", offset, size, Self::dowrite)
     }
 
 }

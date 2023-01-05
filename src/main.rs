@@ -2,11 +2,14 @@
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
+    os::fd::AsRawFd,
     path::PathBuf,
     process
 };
 
+use libc::c_void;
 use log::{debug, error, info};
+use nix::sys::mman::{ProtFlags, MapFlags, MsFlags, mmap, munmap, msync};
 use rand::{         
     Rng,            
     RngCore,
@@ -121,6 +124,39 @@ impl Exerciser {
         }
     }
 
+    fn check_eofpage(offset: u64, file_size: u64, p: *const c_void, size: usize)
+    {
+        let page_size = Self::getpagesize() as usize;
+        let page_mask =  page_size as isize - 1;
+        if offset + size as u64 <= file_size & !(page_mask as u64) {
+            return;
+        }
+
+        // We landed in the last page of the file.  Test to make sure the VM
+        // system provided 0's beyond the true end of the file mapping (as
+        // required by mmap def in 1996 posix 1003.1).
+        //
+        // Safety: mmap always maps to the end of a page, and we drop the slice
+        // before munmap().
+        let last_page = unsafe {
+            let last_page_p = ((p as *mut u8)
+                .offset((offset as isize & page_mask) + size as isize)
+                as isize & !page_mask)
+                as *const u8;
+            std::slice::from_raw_parts(last_page_p, page_size)
+        };
+        for (i, b) in last_page[file_size as usize & page_mask as usize..].iter().enumerate() {
+            if *b != 0 {
+                error!("Mapped non-zero data past EoF ({:#x}) page offset {:#x} is {:#x}",
+                    file_size - 1,
+                    (file_size & page_mask as u64) + i as u64,
+                    *b
+                );
+                process::exit(1);
+            }
+        }
+    }
+
     fn doread(&mut self, offset: u64, size: usize ) {
         if size == 0 {
             debug!("{} skipping zero size read", self.steps);
@@ -144,31 +180,31 @@ impl Exerciser {
         self.check_buffers(&temp_buf, offset)
     }
 
-    fn dowrite(&mut self, offset: u64, size: usize) {
+    fn dowrite<F>(&mut self, op: &str, offset: u64, size: usize, f: F)
+        where F: Fn(&File, u64, u64, &[u8], u64)
+    {
         if size == 0 {
             debug!("{} skipping zero size write", self.steps);
             return;
         }
 
-        info!("{} write {:#x} thru {:#x} ({:#x} bytes)", self.steps,
+        info!("{} {} {:#x} thru {:#x} ({:#x} bytes)",
+            self.steps,
+            op,
             offset,
             offset + size as u64,
             size);
 
         self.gendata(offset, size);
 
+        let cur_file_size = self.file_size;
         if self.file_size < offset + size as u64 {
             if self.file_size < offset {
                 safemem::write_bytes(&mut self.good_buf[self.file_size as usize ..offset as usize], 0)
             }
             self.file_size = offset + size as u64;
         }
-        self.file.seek(SeekFrom::Start(offset)).unwrap();
-        let written = self.file.write(&self.good_buf[offset as usize..offset as usize + size]).unwrap();
-        if written != size {
-            error!("short write: {:#x} bytes instead of {:#x}", written, size);
-            process::exit(1);
-        }
+        f(&self.file, cur_file_size, self.file_size, &self.good_buf[offset as usize..offset as usize + size], offset)
     }
 
     fn exercise(&mut self) {
@@ -199,6 +235,40 @@ impl Exerciser {
         }
     }
 
+    fn getpagesize() -> i32 {
+        // This function is inherently safe
+        unsafe { libc::getpagesize() }
+    }
+
+    fn mapwrite(&mut self, offset: u64, size: usize) {
+        self.dowrite(&"mapwrite", offset, size,
+             |file, cur_file_size, file_size, buf, offset| {
+                if file_size > cur_file_size {
+                    file.set_len(file_size).unwrap();
+                }
+                let page_mask = Self::getpagesize() as usize - 1;
+                let pg_offset = offset as usize & page_mask;
+                let map_size = pg_offset + size;
+                // Safety: good luck proving it's safe.
+                unsafe {
+                    let p = mmap(
+                        None,
+                        map_size.try_into().unwrap(),
+                        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                        MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
+                        file.as_raw_fd(),
+                        offset as i64 - pg_offset as i64
+                    ).unwrap();
+                    ((p as *mut u8).offset(pg_offset as isize))
+                        .copy_from(buf.as_ptr(), buf.len());
+                    msync(p, map_size, MsFlags::MS_SYNC).unwrap();
+                    Self::check_eofpage(offset, file_size, p, size);
+                    munmap(p, map_size).unwrap();
+                }
+            }
+        )
+    }
+
     fn step(&mut self) {
         let op: Op = self.rng.gen();
         self.steps += 1;
@@ -211,9 +281,9 @@ impl Exerciser {
                 size = usize::try_from(MAXFILELEN - offset).unwrap();
             }
             if !self.nomapwrite && op == Op::MapWrite {
-                todo!()
+                self.mapwrite(offset, size);
             } else {
-                self.dowrite(offset, size);
+                self.write(offset, size);
             }
         } else {
             offset = if self.file_size > 0 {
@@ -231,6 +301,19 @@ impl Exerciser {
             }
         }
     }
+
+    fn write(&mut self, offset: u64, size: usize) {
+        self.dowrite(&"write", offset, size, |mut file, _, _, buf, offset| {
+            let size = buf.len();
+            file.seek(SeekFrom::Start(offset)).unwrap();
+            let written = file.write(&buf).unwrap();
+            if written != size {
+                error!("short write: {:#x} bytes instead of {:#x}", written, size);
+                process::exit(1);
+            }
+        })
+    }
+
 }
 
 impl From<Cli> for Exerciser {

@@ -346,7 +346,7 @@ impl Exerciser {
             } else {
                 0
             };
-            if offset + size as u64 > MAXFILELEN {
+            if offset + size as u64 > self.file_size {
                 size = usize::try_from(self.file_size - offset).unwrap();
             }
             if !self.nomapread && op == Op::MapRead {

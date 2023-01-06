@@ -80,6 +80,10 @@ struct Cli {
     #[arg(short = 'o', default_value_t = 65536)]
     oplen: usize,
 
+    /// Read boundary. 4k would make reads page aligned
+    #[arg(short = 'r', default_value_t = 1)]
+    readbdy: u64,
+
     /// Seed for RNG
     #[arg(short = 'S')]
     seed: Option<u32>,
@@ -91,7 +95,6 @@ struct Cli {
     // TODO
     // -m
     // -p
-    // -r
     // -s
     // -t
     // -w
@@ -150,6 +153,7 @@ struct Exerciser {
     norandomoplen: bool,
     nosizechecks: bool,
     numops: Option<u64>,
+    readbdy: u64,
     // 0-indexed operation number to begin real transfers.
     simulatedopcount: u64,
     /// Width for printing fields containing operation sizes
@@ -307,9 +311,11 @@ impl Exerciser {
     }
 
     /// Wrapper around read-like operations
-    fn read_like<F>(&mut self, op: &str, offset: u64, size: usize, f: F)
+    fn read_like<F>(&mut self, op: &str, mut offset: u64, size: usize, f: F)
         where F: Fn(&mut Exerciser, &mut [u8], u64, usize)
     {
+        offset -= offset % self.readbdy;
+
         if size == 0 {
             debug!("{:width$} skipping zero size read",
                    self.steps,
@@ -597,6 +603,7 @@ impl From<Cli> for Exerciser {
             norandomoplen: cli.norandomoplen,
             nosizechecks: cli.nosizechecks,
             numops: cli.numops,
+            readbdy: cli.readbdy,
             simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
             swidth,
             stepwidth,

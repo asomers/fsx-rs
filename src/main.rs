@@ -2,8 +2,9 @@
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
+    mem,
     num::NonZeroU64,
-    os::fd::AsRawFd,
+    os::fd::{AsRawFd, IntoRawFd},
     path::PathBuf,
     process
 };
@@ -39,7 +40,7 @@ struct Cli {
 
     /// 1/P chance of file close+open at each op (default infinity)
     #[arg(short = 'c', value_name = "P")]
-    closeprob: Option<u64>,
+    closeprob: Option<u32>,
 
     /// Disable msync after mapwrite
     #[arg(short = 'U')]
@@ -86,11 +87,9 @@ enum Op {
     MapWrite
 }
 
-impl Distribution<Op> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
-        // Manually handle the modulo division, rather than using
-        // RngCore::gen_range, for compatibility with the C-based FSX
-        let x = rng.next_u32() % 5;
+impl From<u32> for Op {
+    fn from(rv: u32) -> Self {
+        let x = rv % 5;
         match x {
             0 => Op::Read,
             1 => Op::Write,
@@ -101,7 +100,17 @@ impl Distribution<Op> for Standard {
         }
     }
 }
+
+impl Distribution<Op> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
+        // Manually handle the modulo division, rather than using
+        // RngCore::gen_range, for compatibility with the C-based FSX
+        Op::from(rng.next_u32())
+    }
+}
 struct Exerciser {
+    /// 1 in P chance of close+open at each op
+    closeprob: Option<u32>,
     /// Current file size
     file_size: u64,
     fname: PathBuf,
@@ -170,6 +179,29 @@ impl Exerciser {
             .unwrap()
             .len();
         assert_eq!(size, self.file_size);
+    }
+
+    /// Close and reopen the file
+    fn closeopen(&mut self) {
+        if self.steps <= self.simulatedopcount {
+            return;
+        }
+        info!("{} close/open", self.steps);
+
+        // We must remove and drop the old File before opening it, and that
+        // requires swapping its contents.
+        // Safe because we never access the uninitialized File object.
+        unsafe  {
+            let placeholder: File = mem::MaybeUninit::zeroed().assume_init();
+            drop(mem::replace(&mut self.file, placeholder));
+            let newfile = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&self.fname)
+                .expect("Cannot open file");
+            let placeholder = mem::replace(&mut self.file, newfile);
+            placeholder.into_raw_fd();
+        }
     }
 
     fn doread(&mut self, buf: &mut [u8], offset: u64, size: usize) {
@@ -343,12 +375,21 @@ impl Exerciser {
     }
 
     fn step(&mut self) {
-        let op: Op = self.rng.gen();
+        // It would be more natural to generate op and closeopen independently.
+        // But do it this way for backwards compatibility with C.
+        let rv: u32 = self.rng.gen();
+        let op = Op::from(rv);
 
         if self.simulatedopcount > 0 && self.steps == self.simulatedopcount {
             self.writefileimage();
         }
         self.steps += 1;
+
+        let closeopen = if let Some(x) = self.closeprob {
+            (rv >> 3) < (1 << 28) / x
+        } else {
+            false
+        };
 
         let mut size = MAXOPLEN;
         if op == Op::Write || op == Op::MapWrite {
@@ -383,6 +424,9 @@ impl Exerciser {
         }
         if self.steps > self.simulatedopcount {
             self.check_size();
+        }
+        if closeopen {
+            self.closeopen()
         }
     }
 
@@ -436,6 +480,7 @@ impl From<Cli> for Exerciser {
         let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
         rng.fill_bytes(&mut original_buf[..]);
         Exerciser{
+            closeprob: cli.closeprob,
             file,
             file_size: 0,
             fname: cli.fname,

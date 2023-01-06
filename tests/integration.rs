@@ -57,6 +57,15 @@ use tempfile::NamedTempFile;
 [INFO  fsx] 109 truncate from 0x2ba38 to 0x2e53c
 [INFO  fsx] 110 mapwrite 0x124ae thru 0x224ad (0x10000 bytes)
 ")]
+// Equivalent to C's fsx -N 2 -S 13 -o 65536 -O -c 2
+// Exercises closeopen
+#[case("-N 2 -S 13 -c 2",
+"[INFO  fsx] Using seed 13
+[INFO  fsx] 1 mapwrite 0x1781 thru 0x11780 (0x10000 bytes)
+[INFO  fsx] 1 close/open
+[INFO  fsx] 2 read 0xf512 thru 0x11780 (0x226f bytes)
+[INFO  fsx] 2 close/open
+")]
 fn stability(#[case] args: &str, #[case] stderr: &str) {
     let tf = NamedTempFile::new().unwrap();
 

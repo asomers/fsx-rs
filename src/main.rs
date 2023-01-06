@@ -325,8 +325,8 @@ impl Exerciser {
         self.steps += 1;
 
         let mut size = MAXOPLEN;
-        let mut offset: u64 = self.rng.gen();
         if op == Op::Write || op == Op::MapWrite {
+            let mut offset: u64 = self.rng.gen();
             offset %= MAXFILELEN;
             if offset + size as u64 > MAXFILELEN {
                 size = usize::try_from(MAXFILELEN - offset).unwrap();
@@ -336,7 +336,11 @@ impl Exerciser {
             } else {
                 self.write(offset, size);
             }
+        } else if op == Op::Truncate {
+            let fsize = self.rng.gen::<u64>() % MAXFILELEN;
+            self.truncate(fsize)
         } else {
+            let mut offset: u64 = self.rng.gen();
             offset = if self.file_size > 0 {
                 offset % self.file_size
             } else {
@@ -351,6 +355,15 @@ impl Exerciser {
                 self.read(offset, size);
             }
         }
+    }
+
+    fn truncate(&mut self, size: u64) {
+        info!("{} truncate from {:#x} to {:#x}", self.steps, self.file_size, size);
+        if size > self.file_size {
+            safemem::write_bytes(&mut self.good_buf[self.file_size as usize ..size as usize], 0)
+        }
+        self.file_size = size;
+        self.file.set_len(size).unwrap();
     }
 
     fn write(&mut self, offset: u64, size: usize) {

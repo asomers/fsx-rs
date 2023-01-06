@@ -78,11 +78,15 @@ struct Cli {
 
     /// Seed for RNG
     #[arg(short = 'S')]
-    seed: Option<u32>
+    seed: Option<u32>,
+
+    /// Disable verifications of file size
+    #[arg(short = 'n')]
+    nosizechecks: bool,
+
     // TODO
     // -i
     // -m
-    // -n
     // -p
     // -q
     // -r
@@ -140,6 +144,7 @@ struct Exerciser {
     nomapwrite: bool,
     nomsyncafterwrite: bool,
     norandomoplen: bool,
+    nosizechecks: bool,
     numops: Option<u64>,
     // 0-indexed operation number to begin real transfers.
     simulatedopcount: u64,
@@ -200,10 +205,12 @@ impl Exerciser {
     }
 
     fn check_size(&self) {
-        let size = self.file.metadata()
-            .unwrap()
-            .len();
-        assert_eq!(size, self.file_size);
+        if ! self.nosizechecks {
+            let size = self.file.metadata()
+                .unwrap()
+                .len();
+            assert_eq!(size, self.file_size);
+        }
     }
 
     /// Close and reopen the file
@@ -554,6 +561,7 @@ impl From<Cli> for Exerciser {
             nomapwrite: cli.nomapwrite,
             nomsyncafterwrite: cli.nomsyncafterwrite,
             norandomoplen: cli.norandomoplen,
+            nosizechecks: cli.nosizechecks,
             numops: cli.numops,
             simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
             swidth,

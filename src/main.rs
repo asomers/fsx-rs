@@ -117,7 +117,6 @@ struct Exerciser {
     original_buf: Vec<u8>,
     // Use OsPRng for full backwards-compatibility with the C fsx
     rng: OsPRng,
-    seed: u32,
     // Number of steps completed so far
     steps: u64,
     file: File
@@ -448,7 +447,6 @@ impl From<Cli> for Exerciser {
             simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
             original_buf,
             rng,
-            seed,
             steps: 0
         }
     }

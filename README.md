@@ -38,15 +38,15 @@ implementations will produce exactly the same sequence of file system
 operations.  Some of the options are slightly different.  If migrating from the
 C-based FSX, adapt like so:
 
-| C-based FSX option | fsx-rs equivalent  |
-| ------------------ | ------------------ |
-| -d                 | env RUST_LOG=debug |
-| -d -q              | env RUST_LOG=info  |
-| -m                 | TODO               |
-| -p                 | TODO               |
-| -s                 | no equivalent      |
-| -L                 | TODO               |
-| -P                 | TODO               |
+| C-based FSX option | fsx-rs equivalent                          |
+| ------------------ | ------------------------------------------ |
+| -d                 | `env RUST_LOG=debug`                       |
+| -d -q              | `env RUST_LOG=info`                        |
+| -m                 | TODO                                       |
+| -p N               | `fsx ... 2>&1 \| awk '$3 % N == 0{print}'` |
+| -s                 | no equivalent                              |
+| -L                 | TODO                                       |
+| -P                 | TODO                                       |
 
 # License
 

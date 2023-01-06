@@ -2,6 +2,7 @@
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
+    num::NonZeroU64,
     os::fd::AsRawFd,
     path::PathBuf,
     process
@@ -33,8 +34,8 @@ struct Cli {
     fname: PathBuf,
 
     /// Beginning operation number
-    #[arg(short = 'b', default_value_t = 1u64)]
-    opnum: u64,
+    #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]
+    opnum: NonZeroU64,
 
     /// 1/P chance of file close+open at each op (default infinity)
     #[arg(short = 'c', value_name = "P")]
@@ -110,7 +111,8 @@ struct Exerciser {
     nomapwrite: bool,
     nomsyncafterwrite: bool,
     numops: Option<u64>,
-    opnum: u64,
+    // 0-indexed operation number to begin real transfers.
+    simulatedopcount: u64,
     // File's original data
     original_buf: Vec<u8>,
     // Use OsPRng for full backwards-compatibility with the C fsx
@@ -242,6 +244,9 @@ impl Exerciser {
             debug!("{} skipping seek/read past EoF", self.steps);
             return;
         }
+        if self.steps <= self.simulatedopcount {
+            return;
+        }
         info!("{} {} {:#x} thru {:#x} ({:#x} bytes)",
             self.steps,
             op,
@@ -262,13 +267,6 @@ impl Exerciser {
             return;
         }
 
-        info!("{} {} {:#x} thru {:#x} ({:#x} bytes)",
-            self.steps,
-            op,
-            offset,
-            offset + size as u64 - 1,
-            size);
-
         self.gendata(offset, size);
 
         let cur_file_size = self.file_size;
@@ -278,6 +276,18 @@ impl Exerciser {
             }
             self.file_size = offset + size as u64;
         }
+
+        if self.steps <= self.simulatedopcount {
+            return;
+        }
+
+        info!("{} {} {:#x} thru {:#x} ({:#x} bytes)",
+            self.steps,
+            op,
+            offset,
+            offset + size as u64 - 1,
+            size);
+
         f(self, cur_file_size, size, offset)
     }
 
@@ -328,6 +338,10 @@ impl Exerciser {
 
     fn step(&mut self) {
         let op: Op = self.rng.gen();
+
+        if self.simulatedopcount > 0 && self.steps == self.simulatedopcount {
+            self.writefileimage();
+        }
         self.steps += 1;
 
         let mut size = MAXOPLEN;
@@ -361,14 +375,21 @@ impl Exerciser {
                 self.read(offset, size);
             }
         }
+        // TODO: verify file size
     }
 
     fn truncate(&mut self, size: u64) {
-        info!("{} truncate from {:#x} to {:#x}", self.steps, self.file_size, size);
         if size > self.file_size {
             safemem::write_bytes(&mut self.good_buf[self.file_size as usize ..size as usize], 0)
         }
+        let cur_file_size = self.file_size;
         self.file_size = size;
+
+        if self.steps <= self.simulatedopcount {
+            return;
+        }
+
+        info!("{} truncate from {:#x} to {:#x}", self.steps, cur_file_size, size);
         self.file.set_len(size).unwrap();
     }
 
@@ -376,6 +397,16 @@ impl Exerciser {
         self.write_like(&"write", offset, size, Self::dowrite)
     }
 
+    fn writefileimage(&mut self) {
+        self.file.seek(SeekFrom::Start(0)).unwrap();
+        let written = self.file.write(&self.good_buf[..self.file_size as usize]).unwrap();
+        if written as u64 != self.file_size {
+            error!("short write: {:#x} bytes instead of {:#x}", written,
+                   self.file_size);
+            process::exit(1);
+        }
+        self.file.set_len(self.file_size).unwrap();
+    }
 }
 
 impl From<Cli> for Exerciser {
@@ -405,7 +436,7 @@ impl From<Cli> for Exerciser {
             nomapwrite: cli.nomapwrite,
             nomsyncafterwrite: cli.nomsyncafterwrite,
             numops: cli.numops,
-            opnum: cli.opnum,
+            simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
             original_buf,
             rng,
             seed,

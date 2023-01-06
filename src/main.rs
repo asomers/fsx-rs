@@ -166,6 +166,13 @@ impl Exerciser {
         }
     }
 
+    fn check_size(&self) {
+        let size = self.file.metadata()
+            .unwrap()
+            .len();
+        assert_eq!(size, self.file_size);
+    }
+
     fn doread(&mut self, buf: &mut [u8], offset: u64, size: usize) {
         self.file.seek(SeekFrom::Start(offset)).unwrap();
         let read = self.file.read(buf).unwrap();
@@ -375,7 +382,9 @@ impl Exerciser {
                 self.read(offset, size);
             }
         }
-        // TODO: verify file size
+        if self.steps > self.simulatedopcount {
+            self.check_size();
+        }
     }
 
     fn truncate(&mut self, size: u64) {

@@ -27,6 +27,21 @@ use tempfile::NamedTempFile;
 [INFO  fsx] 9 write 0xc8d9 thru 0x1c8d8 (0x10000 bytes)
 [INFO  fsx] 10 write 0x6940 thru 0x1693f (0x10000 bytes)
 ")]
+// Equivalent to C's fsx -N 10 -S 4 -o 65536 -O -RW.  Disables mmapped read and
+// write.
+#[case("-N10 -RW -S 4",
+"[INFO  fsx] Using seed 4
+[DEBUG fsx] 1 skipping zero size read
+[INFO  fsx] 2 truncate from 0x0 to 0x2c014
+[INFO  fsx] 3 write 0x1abd3 thru 0x2abd2 (0x10000 bytes)
+[INFO  fsx] 4 read 0x19db5 thru 0x29db4 (0x10000 bytes)
+[INFO  fsx] 5 truncate from 0x2c014 to 0x3e3b0
+[INFO  fsx] 6 read 0x33082 thru 0x3e3af (0xb32e bytes)
+[INFO  fsx] 7 read 0x13354 thru 0x23353 (0x10000 bytes)
+[INFO  fsx] 8 read 0x23bb7 thru 0x33bb6 (0x10000 bytes)
+[INFO  fsx] 9 read 0x395a9 thru 0x3e3af (0x4e07 bytes)
+[INFO  fsx] 10 read 0x7390 thru 0x1738f (0x10000 bytes)
+")]
 // Equivalent to C's fsx -N 10 -d -S 6 -o 65536 -O.  Includes both truncate
 // down and truncate up.
 #[case("-N10 -S 6",

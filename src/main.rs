@@ -378,7 +378,12 @@ impl Exerciser {
         // It would be more natural to generate op and closeopen independently.
         // But do it this way for backwards compatibility with C.
         let rv: u32 = self.rng.gen();
-        let op = Op::from(rv);
+        let op = if self.nomapwrite {
+            // Sigh.  Yes, this is how C does it.
+            Op::from(rv % 4)
+        } else {
+            Op::from(rv)
+        };
 
         if self.simulatedopcount > 0 && self.steps == self.simulatedopcount {
             self.writefileimage();

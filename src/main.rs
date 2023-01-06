@@ -28,6 +28,15 @@ use prng::OsPRng;
 const MAXFILELEN: u64 = 256 * 1024;
 const MAXOPLEN: usize = 64 * 1024;
 
+/// Calculate the maximum field width needed to print numbers up to this size
+fn field_width(max: usize, hex: bool) -> usize {
+    if hex {
+        2 + (8 * mem::size_of_val(&max) - max.leading_zeros() as usize + 3) / 4
+    } else {
+        1 + (max as f64).log(10.0) as usize
+    }
+}
+
 #[derive(Debug, Parser)]
 //#[command(author, version, about, long_about = None)]
 struct Cli {
@@ -117,6 +126,8 @@ struct Exerciser {
     /// Current file size
     file_size: u64,
     fname: PathBuf,
+    /// Width for printing fields containing file offsets
+    fwidth: usize,
     // What the file ought to contain
     good_buf: Vec<u8>,
     nomapread: bool,
@@ -126,6 +137,10 @@ struct Exerciser {
     numops: Option<u64>,
     // 0-indexed operation number to begin real transfers.
     simulatedopcount: u64,
+    /// Width for printing fields containing operation sizes
+    swidth: usize,
+    /// Width for printing the step number field
+    stepwidth: usize,
     // File's original data
     original_buf: Vec<u8>,
     // Use OsPRng for full backwards-compatibility with the C fsx
@@ -190,7 +205,7 @@ impl Exerciser {
         if self.steps <= self.simulatedopcount {
             return;
         }
-        info!("{} close/open", self.steps);
+        info!("{:width$} close/open", self.steps, width = self.stepwidth);
 
         // We must remove and drop the old File before opening it, and that
         // requires swapping its contents.
@@ -279,22 +294,29 @@ impl Exerciser {
         where F: Fn(&mut Exerciser, &mut [u8], u64, usize)
     {
         if size == 0 {
-            debug!("{} skipping zero size read", self.steps);
+            debug!("{:width$} skipping zero size read",
+                   self.steps,
+                   width = self.stepwidth);
             return;
         }
         if size as u64 + offset > self.file_size {
-            debug!("{} skipping seek/read past EoF", self.steps);
+            debug!("{:width$} skipping seek/read past EoF",
+                   self.steps,
+                   width = self.stepwidth);
             return;
         }
         if self.steps <= self.simulatedopcount {
             return;
         }
-        info!("{} {} {:#x} thru {:#x} ({:#x} bytes)",
+        info!("{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} bytes)",
             self.steps,
             op,
             offset,
             offset + size as u64 - 1,
-            size);
+            size,
+            stepwidth = self.stepwidth,
+            fwidth = self.fwidth,
+            swidth = self.swidth);
         let mut temp_buf = vec![0u8; size];
         f(self, &mut temp_buf[..], offset, size);
         self.check_buffers(&temp_buf, offset)
@@ -305,7 +327,9 @@ impl Exerciser {
         where F: Fn(&mut Exerciser, u64, usize, u64)
     {
         if size == 0 {
-            debug!("{} skipping zero size write", self.steps);
+            debug!("{:width$} skipping zero size write", 
+                   self.steps,
+                   width = self.stepwidth);
             return;
         }
 
@@ -323,12 +347,15 @@ impl Exerciser {
             return;
         }
 
-        info!("{} {} {:#x} thru {:#x} ({:#x} bytes)",
+        info!("{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} bytes)",
             self.steps,
             op,
             offset,
             offset + size as u64 - 1,
-            size);
+            size,
+            stepwidth = self.stepwidth,
+            fwidth = self.fwidth,
+            swidth = self.swidth);
 
         f(self, cur_file_size, size, offset)
     }
@@ -459,7 +486,12 @@ impl Exerciser {
             return;
         }
 
-        info!("{} truncate from {:#x} to {:#x}", self.steps, cur_file_size, size);
+        info!("{:stepwidth$} truncate {:#fwidth$x} => {:#fwidth$x}",
+              self.steps,
+              cur_file_size,
+              size,
+              stepwidth = self.stepwidth,
+              fwidth = self.fwidth);
         self.file.set_len(size).unwrap();
     }
 
@@ -497,10 +529,17 @@ impl From<Cli> for Exerciser {
         let good_buf = vec![0u8; MAXFILELEN as usize];
         let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
         rng.fill_bytes(&mut original_buf[..]);
+        let fwidth = field_width(MAXFILELEN as usize, true);
+        let swidth = field_width(MAXOPLEN as usize, true);
+        let stepwidth = field_width(
+            cli.numops.map(|x| x as usize).unwrap_or(999999),
+            false
+        );
         Exerciser{
             closeprob: cli.closeprob,
             file,
             file_size: 0,
+            fwidth,
             fname: cli.fname,
             good_buf,
             nomapread: cli.nomapread,
@@ -509,6 +548,8 @@ impl From<Cli> for Exerciser {
             norandomoplen: cli.norandomoplen,
             numops: cli.numops,
             simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
+            swidth,
+            stepwidth,
             original_buf,
             rng,
             steps: 0

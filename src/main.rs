@@ -53,6 +53,10 @@ struct Cli {
     #[arg(short = 'c', value_name = "P")]
     closeprob: Option<u32>,
 
+    /// 1/P chance of msync(MS_INVALIDATE) (default infinity)
+    #[arg(short = 'i', value_name = "P")]
+    invalprob: Option<u32>,
+
     /// Disable msync after mapwrite
     #[arg(short = 'U')]
     nomsyncafterwrite: bool,
@@ -85,7 +89,6 @@ struct Cli {
     nosizechecks: bool,
 
     // TODO
-    // -i
     // -m
     // -p
     // -q
@@ -137,6 +140,8 @@ struct Exerciser {
     fname: PathBuf,
     /// Width for printing fields containing file offsets
     fwidth: usize,
+    /// 1 in P chance of MS_INVALIDATE at each op
+    invalprob: Option<u32>,
     // What the file ought to contain
     good_buf: Vec<u8>,
     maxoplen: usize,
@@ -406,6 +411,27 @@ impl Exerciser {
         unsafe { libc::getpagesize() }
     }
 
+    fn invalidate(&self) {
+        if self.file_size == 0 || self.steps <= self.simulatedopcount {
+            return;
+        }
+        info!("{:width$} msync(MS_INVALIDATE)", self.steps, width =
+               self.stepwidth);
+        let len = self.file_size as usize;
+        unsafe {
+            let p = mmap(
+                None,
+                len.try_into().unwrap(),
+                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
+                self.file.as_raw_fd(),
+                0
+            ).unwrap();
+            msync(p, 0, MsFlags::MS_INVALIDATE).unwrap();
+            munmap(p, len).unwrap();
+        }
+    }
+
     fn mapread(&mut self, offset: u64, size: usize) {
         self.read_like("mapread", offset, size, Self::domapread)
     }
@@ -435,6 +461,11 @@ impl Exerciser {
         self.steps += 1;
 
         let closeopen = if let Some(x) = self.closeprob {
+            (rv >> 3) < (1 << 28) / x
+        } else {
+            false
+        };
+        let invl = if let Some(x) = self.invalprob {
             (rv >> 3) < (1 << 28) / x
         } else {
             false
@@ -482,6 +513,9 @@ impl Exerciser {
         }
         if self.steps > self.simulatedopcount {
             self.check_size();
+        }
+        if invl {
+            self.invalidate()
         }
         if closeopen {
             self.closeopen()
@@ -556,6 +590,7 @@ impl From<Cli> for Exerciser {
             fwidth,
             fname: cli.fname,
             good_buf,
+            invalprob: cli.invalprob,
             maxoplen: cli.oplen,
             nomapread: cli.nomapread,
             nomapwrite: cli.nomapwrite,

@@ -54,6 +54,10 @@ struct Cli {
     #[arg(short = 'W')]
     nomapwrite: bool,
 
+    /// Use oplen (see -o flag) for every op (default random)
+    #[arg(short = 'O')]
+    norandomoplen: bool,
+
     /// Total number of operations to do (default infinity)
     #[arg(short = 'N')]
     numops: Option<u64>,
@@ -74,7 +78,6 @@ struct Cli {
     // -w
     // -D
     // -L
-    // -O
     // -P
 }
 
@@ -119,6 +122,7 @@ struct Exerciser {
     nomapread: bool,
     nomapwrite: bool,
     nomsyncafterwrite: bool,
+    norandomoplen: bool,
     numops: Option<u64>,
     // 0-indexed operation number to begin real transfers.
     simulatedopcount: u64,
@@ -396,8 +400,12 @@ impl Exerciser {
             false
         };
 
-        let mut size = MAXOPLEN;
         if op == Op::Write || op == Op::MapWrite {
+            let mut size = if self.norandomoplen {
+                MAXOPLEN
+            } else {
+                self.rng.gen::<u32>() as usize % (MAXOPLEN as usize + 1)
+            };
             let mut offset: u64 = self.rng.gen::<u32>() as u64;
             offset %= MAXFILELEN;
             if offset + size as u64 > MAXFILELEN {
@@ -412,6 +420,11 @@ impl Exerciser {
             let fsize = u64::from(self.rng.gen::<u32>()) % MAXFILELEN;
             self.truncate(fsize)
         } else {
+            let mut size = if self.norandomoplen {
+                MAXOPLEN
+            } else {
+                self.rng.gen::<u32>() as usize % (MAXOPLEN as usize + 1)
+            };
             let mut offset: u64 = self.rng.gen::<u32>() as u64;
             offset = if self.file_size > 0 {
                 offset % self.file_size
@@ -493,6 +506,7 @@ impl From<Cli> for Exerciser {
             nomapread: cli.nomapread,
             nomapwrite: cli.nomapwrite,
             nomsyncafterwrite: cli.nomsyncafterwrite,
+            norandomoplen: cli.norandomoplen,
             numops: cli.numops,
             simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
             original_buf,

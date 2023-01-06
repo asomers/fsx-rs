@@ -14,7 +14,7 @@ use tempfile::NamedTempFile;
 #[rstest]
 // Equivalent to C's fsx -N 10 -S 4 -o 65536 -O.  Includes both MapRead
 // and MapWrite.
-#[case("-N10 -S 4",
+#[case("-O -N10 -S 4",
 "[INFO  fsx] Using seed 4
 [INFO  fsx] 1 write 0x35b79 thru 0x3ffff (0xa487 bytes)
 [INFO  fsx] 2 write 0x2c014 thru 0x3c013 (0x10000 bytes)
@@ -29,7 +29,7 @@ use tempfile::NamedTempFile;
 ")]
 // Equivalent to C's fsx -N 10 -S 4 -o 65536 -O -RW.  Disables mmapped read and
 // write.
-#[case("-N10 -RW -S 4",
+#[case("-O -N10 -RW -S 4",
 "[INFO  fsx] Using seed 4
 [DEBUG fsx] 1 skipping zero size read
 [INFO  fsx] 2 truncate from 0x0 to 0x2c014
@@ -44,7 +44,7 @@ use tempfile::NamedTempFile;
 ")]
 // Equivalent to C's fsx -N 10 -d -S 6 -o 65536 -O.  Includes both truncate
 // down and truncate up.
-#[case("-N10 -S 6",
+#[case("-O -N10 -S 6",
 "[INFO  fsx] Using seed 6
 [INFO  fsx] 1 write 0xb97f thru 0x1b97e (0x10000 bytes)
 [INFO  fsx] 2 mapwrite 0x1aa09 thru 0x2aa08 (0x10000 bytes)
@@ -58,7 +58,7 @@ use tempfile::NamedTempFile;
 [INFO  fsx] 10 mapread 0xfc15 thru 0x1fc14 (0x10000 bytes)
 ")]
 // Equivalent to C's fsx -b 100 -N 110 -S 4 -o 65536 -O. Uses "-b"
-#[case("-N 110 -b 100 -S 4",
+#[case("-O -N 110 -b 100 -S 4",
 "[INFO  fsx] Using seed 4
 [INFO  fsx] 100 mapwrite 0x6a1 thru 0x106a0 (0x10000 bytes)
 [INFO  fsx] 101 read 0x2ae4a thru 0x3ae49 (0x10000 bytes)
@@ -74,12 +74,27 @@ use tempfile::NamedTempFile;
 ")]
 // Equivalent to C's fsx -N 2 -S 13 -o 65536 -O -c 2
 // Exercises closeopen
-#[case("-N 2 -S 13 -c 2",
+#[case("-O -N 2 -S 13 -c 2",
 "[INFO  fsx] Using seed 13
 [INFO  fsx] 1 mapwrite 0x1781 thru 0x11780 (0x10000 bytes)
 [INFO  fsx] 1 close/open
 [INFO  fsx] 2 read 0xf512 thru 0x11780 (0x226f bytes)
 [INFO  fsx] 2 close/open
+")]
+// Equivalent to C's fsx -N 2 -S 20
+// Uses random oplen
+#[case("-N10 -S 20",
+"[INFO  fsx] Using seed 20
+[DEBUG fsx] 1 skipping zero size read
+[INFO  fsx] 2 write 0x19f18 thru 0x249f6 (0xaadf bytes)
+[INFO  fsx] 3 write 0x3a8ba thru 0x3f983 (0x50ca bytes)
+[INFO  fsx] 4 mapwrite 0x17b18 thru 0x1be26 (0x430f bytes)
+[INFO  fsx] 5 write 0x314db thru 0x3e9a7 (0xd4cd bytes)
+[INFO  fsx] 6 write 0x3ac28 thru 0x3ffff (0x53d8 bytes)
+[INFO  fsx] 7 truncate from 0x40000 to 0x54f7
+[INFO  fsx] 8 mapread 0x1d79 thru 0x54f6 (0x377e bytes)
+[INFO  fsx] 9 truncate from 0x54f7 to 0x24268
+[INFO  fsx] 10 read 0x1110e thru 0x12858 (0x174b bytes)
 ")]
 fn stability(#[case] args: &str, #[case] stderr: &str) {
     let tf = NamedTempFile::new().unwrap();

@@ -25,8 +25,6 @@ use clap::Parser;
 mod prng;
 use prng::OsPRng;
 
-const MAXFILELEN: u64 = 256 * 1024;
-
 /// Calculate the maximum field width needed to print numbers up to this size
 fn field_width(max: usize, hex: bool) -> usize {
     if hex {
@@ -41,6 +39,11 @@ fn field_width(max: usize, hex: bool) -> usize {
 struct Cli {
     /// File name to operate on
     fname: PathBuf,
+
+    /// Maximum file size
+    // NB: could be u64, but the C-based FSX only works with 32-bit file sizes
+    #[arg(short = 'l', default_value_t = 256 * 1024)]
+    flen: u32,
 
     /// Beginning operation number
     #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]
@@ -78,7 +81,6 @@ struct Cli {
     seed: Option<u32>
     // TODO
     // -i
-    // -l
     // -m
     // -n
     // -p
@@ -127,6 +129,7 @@ struct Exerciser {
     closeprob: Option<u32>,
     /// Current file size
     file_size: u64,
+    flen: u64,
     fname: PathBuf,
     /// Width for printing fields containing file offsets
     fwidth: usize,
@@ -437,9 +440,9 @@ impl Exerciser {
                 self.rng.gen::<u32>() as usize % (self.maxoplen + 1)
             };
             let mut offset: u64 = self.rng.gen::<u32>() as u64;
-            offset %= MAXFILELEN;
-            if offset + size as u64 > MAXFILELEN {
-                size = usize::try_from(MAXFILELEN - offset).unwrap();
+            offset %= self.flen;
+            if offset + size as u64 > self.flen {
+                size = usize::try_from(self.flen - offset).unwrap();
             }
             if !self.nomapwrite && op == Op::MapWrite {
                 self.mapwrite(offset, size);
@@ -447,7 +450,7 @@ impl Exerciser {
                 self.write(offset, size);
             }
         } else if op == Op::Truncate {
-            let fsize = u64::from(self.rng.gen::<u32>()) % MAXFILELEN;
+            let fsize = u64::from(self.rng.gen::<u32>()) % self.flen;
             self.truncate(fsize)
         } else {
             let mut size = if self.norandomoplen {
@@ -528,11 +531,11 @@ impl From<Cli> for Exerciser {
             .truncate(true)
             .open(&cli.fname)
             .expect("Cannot create file");
-        let mut original_buf = vec![0u8; MAXFILELEN as usize];
-        let good_buf = vec![0u8; MAXFILELEN as usize];
+        let mut original_buf = vec![0u8; cli.flen as usize];
+        let good_buf = vec![0u8; cli.flen as usize];
         let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
         rng.fill_bytes(&mut original_buf[..]);
-        let fwidth = field_width(MAXFILELEN as usize, true);
+        let fwidth = field_width(cli.flen as usize, true);
         let swidth = field_width(cli.oplen, true);
         let stepwidth = field_width(
             cli.numops.map(|x| x as usize).unwrap_or(999999),
@@ -542,6 +545,7 @@ impl From<Cli> for Exerciser {
             closeprob: cli.closeprob,
             file,
             file_size: 0,
+            flen: cli.flen.into(),
             fwidth,
             fname: cli.fname,
             good_buf,

@@ -10,6 +10,7 @@ mod ffi {
     extern "C" {
         pub(super) fn initstate(seed: c_uint, state: *mut c_char, n: usize)
             -> *mut c_char;
+        // Actually only returns 32 bits, 0-extended to a long.
         pub(super) fn random() -> c_long;
         pub(super) fn setstate(state: *mut c_char) -> *mut c_char;
     }
@@ -22,7 +23,6 @@ pub(crate) struct OsPRng {
     state: Box<[u32; 64]>
 }
 
-#[cfg(target_pointer_width = "64")]
 impl RngCore for OsPRng {
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         // It would be more efficient to fill 4 or 8 bytes at a time.  However,
@@ -34,12 +34,14 @@ impl RngCore for OsPRng {
 
     fn next_u32(&mut self) -> u32 {
         // Safety: inherently safe.
-        (unsafe{ ffi::random() } & 0xFFFFFFFF) as u32
+        unsafe{ ffi::random() as u32 }
     }
 
     fn next_u64(&mut self) -> u64 {
-        // Safety: inherently safe.
-        (unsafe{ ffi::random() }) as u64
+        // Despite returning an unsigned long, C's `random` always returns a
+        // 32-bit value.  We could call it twice here, but that's not what the C
+        // FSX does.  Instead, don't use it.
+        unimplemented!()
     }
 
     fn try_fill_bytes(&mut self, _dest: &mut [u8]) -> Result<(), rand::Error> {

@@ -90,7 +90,7 @@ impl Distribution<Op> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
         // Manually handle the modulo division, rather than using
         // RngCore::gen_range, for compatibility with the C-based FSX
-        let x = rng.next_u64() % 5;
+        let x = rng.next_u32() % 5;
         match x {
             0 => Op::Read,
             1 => Op::Write,
@@ -352,7 +352,7 @@ impl Exerciser {
 
         let mut size = MAXOPLEN;
         if op == Op::Write || op == Op::MapWrite {
-            let mut offset: u64 = self.rng.gen();
+            let mut offset: u64 = self.rng.gen::<u32>() as u64;
             offset %= MAXFILELEN;
             if offset + size as u64 > MAXFILELEN {
                 size = usize::try_from(MAXFILELEN - offset).unwrap();
@@ -363,10 +363,10 @@ impl Exerciser {
                 self.write(offset, size);
             }
         } else if op == Op::Truncate {
-            let fsize = self.rng.gen::<u64>() % MAXFILELEN;
+            let fsize = u64::from(self.rng.gen::<u32>()) % MAXFILELEN;
             self.truncate(fsize)
         } else {
-            let mut offset: u64 = self.rng.gen();
+            let mut offset: u64 = self.rng.gen::<u32>() as u64;
             offset = if self.file_size > 0 {
                 offset % self.file_size
             } else {

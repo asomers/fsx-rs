@@ -88,6 +88,10 @@ struct Cli {
     #[arg(short = 'S')]
     seed: Option<u32>,
 
+    /// Trunc boundary. 4k to make truncs page aligned
+    #[arg(short = 't', default_value_t = 1)]
+    truncbdy: u64,
+
     /// Disable verifications of file size
     #[arg(short = 'n')]
     nosizechecks: bool,
@@ -100,7 +104,6 @@ struct Cli {
     // -m
     // -p
     // -s
-    // -t
     // -D
     // -L
     // -P
@@ -170,6 +173,7 @@ struct Exerciser {
     // Number of steps completed so far
     steps: u64,
     file: File,
+    truncbdy: u64,
     writebdy: u64,
 }
 
@@ -533,7 +537,9 @@ impl Exerciser {
         }
     }
 
-    fn truncate(&mut self, size: u64) {
+    fn truncate(&mut self, mut size: u64) {
+        size -= size % self.truncbdy;
+
         if size > self.file_size {
             safemem::write_bytes(&mut self.good_buf[self.file_size as usize ..size as usize], 0)
         }
@@ -616,6 +622,7 @@ impl From<Cli> for Exerciser {
             original_buf,
             rng,
             steps: 0,
+            truncbdy: cli.truncbdy,
             writebdy: cli.writebdy,
         }
     }

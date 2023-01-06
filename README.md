@@ -24,6 +24,30 @@ shared any code.
 
 This version is a full rewrite in Rust, by Alan Somers.
 
+# Usage
+
+First, create the file system under test and ensure that the current user can
+write to it.  Then run
+
+`fsx [OPTIONS] /path/to/filesystem/testfile`
+
+## Migration
+
+fsx-rs is fully compatible with The C-based fsx.  Given the same seed, the two
+implementations will produce exactly the same sequence of file system
+operations.  Some of the options are slightly different.  If migrating from the
+C-based FSX, adapt like so:
+
+| C-based FSX option | fsx-rs equivalent  |
+| ------------------ | ------------------ |
+| -d                 | env RUST_LOG=debug |
+| -d -q              | env RUST_LOG=info  |
+| -m                 | TODO               |
+| -p                 | TODO               |
+| -s                 | no equivalent      |
+| -L                 | TODO               |
+| -P                 | TODO               |
+
 # License
 
 `fsx` is distributed until the Apple Public Source License version 2.0.  See

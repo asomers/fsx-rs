@@ -408,7 +408,9 @@ impl From<Cli> for Exerciser {
 }
 
 fn main() {
-    env_logger::init();
+    env_logger::builder()
+        .format_timestamp(None)
+        .init();
     let cli = Cli::parse();
     let mut exerciser = Exerciser::from(cli);
     exerciser.exercise()

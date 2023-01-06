@@ -134,7 +134,7 @@ struct Exerciser {
 impl Exerciser {
     fn check_buffers(&self, buf: &[u8], offset: u64) {
         let size = buf.len();
-        if &self.good_buf[offset as usize..offset as usize + size] != &buf[..] {
+        if self.good_buf[offset as usize..offset as usize + size] != buf[..] {
             error!("miscompare: offset= {:#x}, size = {:#x}", offset, size);
             // TODO: detailed comparison
             process::exit(1);
@@ -226,7 +226,7 @@ impl Exerciser {
                 self.file.as_raw_fd(),
                 offset as i64 - pg_offset as i64
             ).unwrap();
-            (p as *mut u8).offset(pg_offset as isize)
+            (p as *mut u8).add(pg_offset)
                 .copy_to(buf.as_mut_ptr(), size);
             Self::check_eofpage(offset, self.file_size, p, size);
         }
@@ -250,7 +250,7 @@ impl Exerciser {
                 self.file.as_raw_fd(),
                 offset as i64 - pg_offset as i64
             ).unwrap();
-            ((p as *mut u8).offset(pg_offset as isize))
+            ((p as *mut u8).add(pg_offset))
                 .copy_from(buf.as_ptr(), size);
             if ! self.nomsyncafterwrite {
                 msync(p, map_size, MsFlags::MS_SYNC).unwrap();
@@ -263,7 +263,7 @@ impl Exerciser {
     fn dowrite(&mut self, _cur_file_size: u64, size: usize, offset: u64) {
         let buf = &self.good_buf[offset as usize..offset as usize + size];
         self.file.seek(SeekFrom::Start(offset)).unwrap();
-        let written = self.file.write(&buf).unwrap();
+        let written = self.file.write(buf).unwrap();
         if written != size {
             error!("short write: {:#x} bytes instead of {:#x}", written, size);
             process::exit(1);
@@ -363,15 +363,15 @@ impl Exerciser {
     }
 
     fn mapread(&mut self, offset: u64, size: usize) {
-        self.read_like(&"mapread", offset, size, Self::domapread)
+        self.read_like("mapread", offset, size, Self::domapread)
     }
 
     fn mapwrite(&mut self, offset: u64, size: usize) {
-        self.write_like(&"mapwrite", offset, size, Self::domapwrite)
+        self.write_like("mapwrite", offset, size, Self::domapwrite)
     }
 
     fn read(&mut self, offset: u64, size: usize) {
-        self.read_like(&"read", offset, size, Self::doread)
+        self.read_like("read", offset, size, Self::doread)
     }
 
     fn step(&mut self) {
@@ -451,7 +451,7 @@ impl Exerciser {
     }
 
     fn write(&mut self, offset: u64, size: usize) {
-        self.write_like(&"write", offset, size, Self::dowrite)
+        self.write_like("write", offset, size, Self::dowrite)
     }
 
     fn writefileimage(&mut self) {

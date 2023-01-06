@@ -40,6 +40,10 @@ struct Cli {
     #[arg(short = 'c', value_name = "P")]
     closeprob: Option<u64>,
 
+    /// Disable msync after mapwrite
+    #[arg(short = 'U')]
+    nomsyncafterwrite: bool,
+
     /// Disable mmap reads
     #[arg(short = 'R')]
     nomapread: bool,
@@ -70,7 +74,6 @@ struct Cli {
     // -L
     // -O
     // -P
-    // -U
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,6 +108,7 @@ struct Exerciser {
     good_buf: Vec<u8>,
     nomapread: bool,
     nomapwrite: bool,
+    nomsyncafterwrite: bool,
     numops: Option<u64>,
     opnum: u64,
     // File's original data
@@ -208,7 +212,9 @@ impl Exerciser {
             ).unwrap();
             ((p as *mut u8).offset(pg_offset as isize))
                 .copy_from(buf.as_ptr(), size);
-            msync(p, map_size, MsFlags::MS_SYNC).unwrap();
+            if ! self.nomsyncafterwrite {
+                msync(p, map_size, MsFlags::MS_SYNC).unwrap();
+            }
             Self::check_eofpage(offset, self.file_size, p, size);
             munmap(p, map_size).unwrap();
         }
@@ -397,6 +403,7 @@ impl From<Cli> for Exerciser {
             good_buf,
             nomapread: cli.nomapread,
             nomapwrite: cli.nomapwrite,
+            nomsyncafterwrite: cli.nomsyncafterwrite,
             numops: cli.numops,
             opnum: cli.opnum,
             original_buf,

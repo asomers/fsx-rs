@@ -80,7 +80,7 @@ struct Cli {
     #[arg(short = 'o', default_value_t = 65536)]
     oplen: usize,
 
-    /// Read boundary. 4k would make reads page aligned
+    /// Read boundary. 4k to make reads page aligned
     #[arg(short = 'r', default_value_t = 1)]
     readbdy: u64,
 
@@ -92,12 +92,15 @@ struct Cli {
     #[arg(short = 'n')]
     nosizechecks: bool,
 
+    /// Write boundary. 4k to make writes page aligned
+    #[arg(short = 'w', default_value_t = 1)]
+    writebdy: u64
+
     // TODO
     // -m
     // -p
     // -s
     // -t
-    // -w
     // -D
     // -L
     // -P
@@ -166,7 +169,8 @@ struct Exerciser {
     rng: OsPRng,
     // Number of steps completed so far
     steps: u64,
-    file: File
+    file: File,
+    writebdy: u64,
 }
 
 impl Exerciser {
@@ -346,9 +350,11 @@ impl Exerciser {
     }
 
     /// Wrapper around write-like operations.
-    fn write_like<F>(&mut self, op: &str, offset: u64, size: usize, f: F)
+    fn write_like<F>(&mut self, op: &str, mut offset: u64, size: usize, f: F)
         where F: Fn(&mut Exerciser, u64, usize, u64)
     {
+        offset -= offset % self.writebdy;
+
         if size == 0 {
             debug!("{:width$} skipping zero size write", 
                    self.steps,
@@ -609,7 +615,8 @@ impl From<Cli> for Exerciser {
             stepwidth,
             original_buf,
             rng,
-            steps: 0
+            steps: 0,
+            writebdy: cli.writebdy,
         }
     }
 }

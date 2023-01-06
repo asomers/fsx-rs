@@ -26,7 +26,6 @@ mod prng;
 use prng::OsPRng;
 
 const MAXFILELEN: u64 = 256 * 1024;
-const MAXOPLEN: usize = 64 * 1024;
 
 /// Calculate the maximum field width needed to print numbers up to this size
 fn field_width(max: usize, hex: bool) -> usize {
@@ -70,6 +69,10 @@ struct Cli {
     /// Total number of operations to do (default infinity)
     #[arg(short = 'N')]
     numops: Option<u64>,
+    /// Maximum size for operations
+    #[arg(short = 'o', default_value_t = 65536)]
+    oplen: usize,
+
     /// Seed for RNG
     #[arg(short = 'S')]
     seed: Option<u32>
@@ -78,7 +81,6 @@ struct Cli {
     // -l
     // -m
     // -n
-    // -o
     // -p
     // -q
     // -r
@@ -130,6 +132,7 @@ struct Exerciser {
     fwidth: usize,
     // What the file ought to contain
     good_buf: Vec<u8>,
+    maxoplen: usize,
     nomapread: bool,
     nomapwrite: bool,
     nomsyncafterwrite: bool,
@@ -429,9 +432,9 @@ impl Exerciser {
 
         if op == Op::Write || op == Op::MapWrite {
             let mut size = if self.norandomoplen {
-                MAXOPLEN
+                self.maxoplen
             } else {
-                self.rng.gen::<u32>() as usize % (MAXOPLEN as usize + 1)
+                self.rng.gen::<u32>() as usize % (self.maxoplen + 1)
             };
             let mut offset: u64 = self.rng.gen::<u32>() as u64;
             offset %= MAXFILELEN;
@@ -448,9 +451,9 @@ impl Exerciser {
             self.truncate(fsize)
         } else {
             let mut size = if self.norandomoplen {
-                MAXOPLEN
+                self.maxoplen
             } else {
-                self.rng.gen::<u32>() as usize % (MAXOPLEN as usize + 1)
+                self.rng.gen::<u32>() as usize % (self.maxoplen + 1)
             };
             let mut offset: u64 = self.rng.gen::<u32>() as u64;
             offset = if self.file_size > 0 {
@@ -530,7 +533,7 @@ impl From<Cli> for Exerciser {
         let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
         rng.fill_bytes(&mut original_buf[..]);
         let fwidth = field_width(MAXFILELEN as usize, true);
-        let swidth = field_width(MAXOPLEN as usize, true);
+        let swidth = field_width(cli.oplen, true);
         let stepwidth = field_width(
             cli.numops.map(|x| x as usize).unwrap_or(999999),
             false
@@ -542,6 +545,7 @@ impl From<Cli> for Exerciser {
             fwidth,
             fname: cli.fname,
             good_buf,
+            maxoplen: cli.oplen,
             nomapread: cli.nomapread,
             nomapwrite: cli.nomapwrite,
             nomsyncafterwrite: cli.nomsyncafterwrite,

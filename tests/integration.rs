@@ -237,3 +237,31 @@ fn stability(#[case] args: &str, #[case] stderr: &str) {
         .unwrap();
     assert_eq!(actual_stderr, stderr);
 }
+
+#[test]
+fn miscompare() {
+    let tf = NamedTempFile::new().unwrap();
+
+    let cmd = Command::cargo_bin("fsx")
+        .unwrap()
+        .env("RUST_LOG", "debug")
+        .args(["-N10", "-S3", "--inject", "5"])
+        .arg(tf.path())
+        .assert()
+        .failure();
+    let actual_stderr = CString::new(cmd.get_output().stderr.clone())
+        .unwrap()
+        .into_string()
+        .unwrap();
+    assert_eq!(
+        actual_stderr,
+        "[INFO  fsx] Using seed 3
+[INFO  fsx]  1 mapwrite 0x23713 .. 0x2cdc3 ( 0x96b1 bytes)
+[INFO  fsx]  2 write    0x3f5a4 .. 0x3ffff (  0xa5c bytes)
+[INFO  fsx]  3 read     0x159ec .. 0x178b0 ( 0x1ec5 bytes)
+[INFO  fsx]  4 mapread  0x2e519 .. 0x31705 ( 0x31ed bytes)
+[INFO  fsx]  6 mapread  0x1784f .. 0x2702a ( 0xf7dc bytes)
+[ERROR fsx] miscompare: offset= 0x1784f, size = 0xf7dc
+"
+    );
+}

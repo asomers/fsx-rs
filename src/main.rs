@@ -97,6 +97,10 @@ struct Cli {
     #[arg(short = 'l', default_value_t = 256 * 1024)]
     flen: u32,
 
+    /// Inject an error on step N
+    #[arg(long = "inject", hide = true, value_name = "N")]
+    inject: Option<u64>,
+
     /// Beginning operation number
     #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]
     opnum: NonZeroU64,
@@ -197,6 +201,8 @@ struct Exerciser {
     fname:             PathBuf,
     /// Width for printing fields containing file offsets
     fwidth:            usize,
+    /// Inject an error on this step
+    inject:            Option<u64>,
     /// 1 in P chance of MS_INVALIDATE at each op
     invalprob:         Option<u32>,
     // What the file ought to contain
@@ -297,7 +303,7 @@ impl Exerciser {
 
     /// Close and reopen the file
     fn closeopen(&mut self) {
-        if self.steps <= self.simulatedopcount {
+        if self.skip() {
             return;
         }
         info!("{:width$} close/open", self.steps, width = self.stepwidth);
@@ -409,7 +415,7 @@ impl Exerciser {
             );
             return;
         }
-        if self.steps <= self.simulatedopcount {
+        if self.skip() {
             return;
         }
         let loglevel = self.loglevel(offset, size);
@@ -429,6 +435,11 @@ impl Exerciser {
         let mut temp_buf = vec![0u8; size];
         f(self, &mut temp_buf[..], offset, size);
         self.check_buffers(&temp_buf, offset)
+    }
+
+    /// Should this step be skipped as not part of the test plan?
+    fn skip(&self) -> bool {
+        self.steps <= self.simulatedopcount || Some(self.steps) == self.inject
     }
 
     /// Wrapper around write-like operations.
@@ -461,7 +472,7 @@ impl Exerciser {
             self.file_size = offset + size as u64;
         }
 
-        if self.steps <= self.simulatedopcount {
+        if self.skip() {
             return;
         }
 
@@ -518,7 +529,7 @@ impl Exerciser {
     }
 
     fn invalidate(&self) {
-        if self.file_size == 0 || self.steps <= self.simulatedopcount {
+        if self.skip() {
             return;
         }
         info!(
@@ -655,7 +666,7 @@ impl Exerciser {
         let cur_file_size = self.file_size;
         self.file_size = size;
 
-        if self.steps <= self.simulatedopcount {
+        if self.skip() {
             return;
         }
 
@@ -733,6 +744,7 @@ impl From<Cli> for Exerciser {
             fwidth,
             fname: cli.fname,
             good_buf,
+            inject: cli.inject,
             invalprob: cli.invalprob,
             maxoplen: cli.oplen,
             monitor: cli.monitor,

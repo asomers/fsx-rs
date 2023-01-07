@@ -275,12 +275,17 @@ impl Exerciser {
         }
     }
 
-    fn check_size(&self) {
+    fn check_size(&mut self) {
         if ! self.nosizechecks {
             let size = self.file.metadata()
                 .unwrap()
                 .len();
-            assert_eq!(size, self.file_size);
+            let size_by_seek = self.file.seek(SeekFrom::End(0)).unwrap();
+            if size != self.file_size || size_by_seek != self.file_size {
+                error!("Size error: expected {:#x} but found {:#x} by stat and {:#x} by seek",
+                       self.file_size, size, size_by_seek);
+                process::exit(1);
+            }
         }
     }
 

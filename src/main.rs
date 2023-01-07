@@ -1,5 +1,6 @@
 // vim: tw=80
 use std::{
+    ffi::OsStr,
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     mem,
@@ -10,7 +11,7 @@ use std::{
 };
 
 use libc::c_void;
-use log::{debug, error, info};
+use log::{Level, debug, error, info, log};
 use nix::sys::mman::{ProtFlags, MapFlags, MsFlags, mmap, munmap, msync};
 use rand::{         
     Rng,            
@@ -20,7 +21,14 @@ use rand::{
     thread_rng
 };  
 
-use clap::Parser;
+use clap::{
+    Arg,
+    Command,
+    Error,
+    Parser,
+    builder::TypedValueParser,
+    error::ErrorKind
+};
 
 mod prng;
 use prng::OsPRng;
@@ -31,6 +39,47 @@ fn field_width(max: usize, hex: bool) -> usize {
         2 + (8 * mem::size_of_val(&max) - max.leading_zeros() as usize + 3) / 4
     } else {
         1 + (max as f64).log(10.0) as usize
+    }
+}
+
+#[derive(Clone)]
+struct MonitorParser {}
+impl TypedValueParser for MonitorParser {
+    type Value = (u64, u64);
+
+    fn parse_ref(&self,
+                 cmd: &Command,
+                 _arg: Option<&Arg>,
+                 value: &OsStr) -> Result<Self::Value, Error>
+    {
+        let vs = value.to_str().
+            ok_or_else(||
+                       clap::Error::new(ErrorKind::InvalidUtf8)
+                       .with_cmd(cmd)
+            )?;
+        let fields = vs.split(':').collect::<Vec<_>>();
+        if fields.len() != 2 {
+            let e = clap::Error::raw(
+                ErrorKind::InvalidValue,
+                "-m argument must contain exactly one ':'"
+            ).with_cmd(cmd);
+            return Err(e);
+        }
+        let startop = fields[0].parse::<u64>()
+            .map_err(|_|
+                     clap::Error::raw(
+                         ErrorKind::InvalidValue,
+                         "-m arguments must be numeric"
+                     )
+             )?;
+        let endop = fields[1].parse::<u64>()
+            .map_err(|_|
+                     clap::Error::raw(
+                         ErrorKind::InvalidValue,
+                         "-m arguments must be numeric"
+                     )
+             )?;
+        Ok((startop, endop))
     }
 }
 
@@ -57,6 +106,10 @@ struct Cli {
     #[arg(short = 'i', value_name = "P")]
     invalprob: Option<u32>,
 
+    /// Monitor specified byte range
+    #[arg(short = 'm', value_name = "from:to", value_parser = MonitorParser{})]
+    monitor: Option<(u64, u64)>,
+
     /// Disable msync after mapwrite
     #[arg(short = 'U')]
     nomsyncafterwrite: bool,
@@ -76,6 +129,7 @@ struct Cli {
     /// Total number of operations to do (default infinity)
     #[arg(short = 'N')]
     numops: Option<u64>,
+
     /// Maximum size for operations
     #[arg(short = 'o', default_value_t = 65536)]
     oplen: usize,
@@ -101,7 +155,6 @@ struct Cli {
     writebdy: u64
 
     // TODO
-    // -m
     // -L
     // -P
 }
@@ -150,6 +203,8 @@ struct Exerciser {
     // What the file ought to contain
     good_buf: Vec<u8>,
     maxoplen: usize,
+    /// Monitor these byte ranges in extra detail.
+    monitor: Option<(u64, u64)>,
     nomapread: bool,
     nomapwrite: bool,
     nomsyncafterwrite: bool,
@@ -336,7 +391,8 @@ impl Exerciser {
         if self.steps <= self.simulatedopcount {
             return;
         }
-        info!("{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} bytes)",
+        let loglevel = self.loglevel(offset, size);
+        log!(loglevel, "{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} bytes)",
             self.steps,
             op,
             offset,
@@ -377,7 +433,8 @@ impl Exerciser {
             return;
         }
 
-        info!("{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} bytes)",
+        let loglevel = self.loglevel(offset, size);
+        log!(loglevel, "{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} bytes)",
             self.steps,
             op,
             offset,
@@ -442,6 +499,17 @@ impl Exerciser {
             msync(p, 0, MsFlags::MS_INVALIDATE).unwrap();
             munmap(p, len).unwrap();
         }
+    }
+
+    /// Log level to use for I/O operations.
+    fn loglevel(&self, offset: u64, size: usize) -> Level {
+        let mut loglevel = Level::Info;
+        if let Some((start, end)) = self.monitor {
+            if start < offset + size as u64 && offset <= end {
+                loglevel = Level::Warn;
+            }
+        }
+        loglevel
     }
 
     fn mapread(&mut self, offset: u64, size: usize) {
@@ -547,7 +615,16 @@ impl Exerciser {
             return;
         }
 
-        info!("{:stepwidth$} truncate {:#fwidth$x} => {:#fwidth$x}",
+        // XXX Should not log at WARN if size < self.monitor.0 and
+        // self.file_size < self.monitor.0.  But the C-based implementation
+        // does.
+        let mut loglevel = Level::Info;
+        if let Some((_, end)) = self.monitor {
+            if size <= end {
+                loglevel = Level::Warn;
+            }
+        }
+        log!(loglevel, "{:stepwidth$} truncate {:#fwidth$x} => {:#fwidth$x}",
               self.steps,
               cur_file_size,
               size,
@@ -606,6 +683,7 @@ impl From<Cli> for Exerciser {
             good_buf,
             invalprob: cli.invalprob,
             maxoplen: cli.oplen,
+            monitor: cli.monitor,
             nomapread: cli.nomapread,
             nomapwrite: cli.nomapwrite,
             nomsyncafterwrite: cli.nomsyncafterwrite,

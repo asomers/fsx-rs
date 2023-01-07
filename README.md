@@ -42,7 +42,7 @@ C-based FSX, adapt like so:
 | ------------------ | ------------------------------------------ |
 | -d                 | `env RUST_LOG=debug`                       |
 | -d -q              | `env RUST_LOG=info`                        |
-| -m                 | TODO                                       |
+| -m                 | `env RUST_LOG=warn fsx -m xxx`             |
 | -p N               | `fsx ... 2>&1 \| awk '$3 % N == 0{print}'` |
 | -s                 | no equivalent                              |
 | -L                 | TODO                                       |

@@ -511,15 +511,15 @@ impl Exerciser {
         let mut uoff = usize::try_from(offset).unwrap();
         loop {
             size -= 1;
-            if size == 0 {
-                break;
-            }
             self.good_buf[uoff] = (self.steps % 256) as u8;
             if uoff % 2 > 0 {
                 self.good_buf[uoff] =
                     self.good_buf[uoff].wrapping_add(self.original_buf[uoff]);
             }
             uoff += 1;
+            if size == 0 {
+                break;
+            }
         }
     }
 

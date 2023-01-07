@@ -102,7 +102,6 @@ struct Cli {
 
     // TODO
     // -m
-    // -s
     // -L
     // -P
 }

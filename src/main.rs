@@ -7,30 +7,29 @@ use std::{
     num::NonZeroU64,
     os::fd::{AsRawFd, IntoRawFd},
     path::PathBuf,
-    process
+    process,
 };
-
-use libc::c_void;
-use log::{Level, debug, error, info, log};
-use nix::{
-    sys::mman::{ProtFlags, MapFlags, MsFlags, mmap, munmap, msync},
-    unistd::{SysconfVar, sysconf}
-};
-use rand::{         
-    Rng,            
-    RngCore,
-    SeedableRng,
-    distributions::{Distribution, Standard},
-    thread_rng
-};  
 
 use clap::{
+    builder::TypedValueParser,
+    error::ErrorKind,
     Arg,
     Command,
     Error,
     Parser,
-    builder::TypedValueParser,
-    error::ErrorKind
+};
+use libc::c_void;
+use log::{debug, error, info, log, Level};
+use nix::{
+    sys::mman::{mmap, msync, munmap, MapFlags, MsFlags, ProtFlags},
+    unistd::{sysconf, SysconfVar},
+};
+use rand::{
+    distributions::{Distribution, Standard},
+    thread_rng,
+    Rng,
+    RngCore,
+    SeedableRng,
 };
 
 mod prng;
@@ -50,38 +49,36 @@ struct MonitorParser {}
 impl TypedValueParser for MonitorParser {
     type Value = (u64, u64);
 
-    fn parse_ref(&self,
-                 cmd: &Command,
-                 _arg: Option<&Arg>,
-                 value: &OsStr) -> Result<Self::Value, Error>
-    {
-        let vs = value.to_str().
-            ok_or_else(||
-                       clap::Error::new(ErrorKind::InvalidUtf8)
-                       .with_cmd(cmd)
-            )?;
+    fn parse_ref(
+        &self,
+        cmd: &Command,
+        _arg: Option<&Arg>,
+        value: &OsStr,
+    ) -> Result<Self::Value, Error> {
+        let vs = value.to_str().ok_or_else(|| {
+            clap::Error::new(ErrorKind::InvalidUtf8).with_cmd(cmd)
+        })?;
         let fields = vs.split(':').collect::<Vec<_>>();
         if fields.len() != 2 {
             let e = clap::Error::raw(
                 ErrorKind::InvalidValue,
-                "-m argument must contain exactly one ':'"
-            ).with_cmd(cmd);
+                "-m argument must contain exactly one ':'",
+            )
+            .with_cmd(cmd);
             return Err(e);
         }
-        let startop = fields[0].parse::<u64>()
-            .map_err(|_|
-                     clap::Error::raw(
-                         ErrorKind::InvalidValue,
-                         "-m arguments must be numeric"
-                     )
-             )?;
-        let endop = fields[1].parse::<u64>()
-            .map_err(|_|
-                     clap::Error::raw(
-                         ErrorKind::InvalidValue,
-                         "-m arguments must be numeric"
-                     )
-             )?;
+        let startop = fields[0].parse::<u64>().map_err(|_| {
+            clap::Error::raw(
+                ErrorKind::InvalidValue,
+                "-m arguments must be numeric",
+            )
+        })?;
+        let endop = fields[1].parse::<u64>().map_err(|_| {
+            clap::Error::raw(
+                ErrorKind::InvalidValue,
+                "-m arguments must be numeric",
+            )
+        })?;
         Ok((startop, endop))
     }
 }
@@ -89,6 +86,9 @@ impl TypedValueParser for MonitorParser {
 #[derive(Debug, Parser)]
 //#[command(author, version, about, long_about = None)]
 struct Cli {
+    // TODO
+    // -L
+    // -P
     /// File name to operate on
     fname: PathBuf,
 
@@ -155,11 +155,7 @@ struct Cli {
 
     /// Write boundary. 4k to make writes page aligned
     #[arg(short = 'w', default_value_t = 1)]
-    writebdy: u64
-
-    // TODO
-    // -L
-    // -P
+    writebdy: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -168,7 +164,7 @@ enum Op {
     Write,
     MapRead,
     Truncate,
-    MapWrite
+    MapWrite,
 }
 
 impl From<u32> for Op {
@@ -180,7 +176,7 @@ impl From<u32> for Op {
             2 => Op::MapRead,
             3 => Op::Truncate,
             4 => Op::MapWrite,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -194,42 +190,42 @@ impl Distribution<Op> for Standard {
 }
 struct Exerciser {
     /// 1 in P chance of close+open at each op
-    closeprob: Option<u32>,
+    closeprob:         Option<u32>,
     /// Current file size
-    file_size: u64,
-    flen: u64,
-    fname: PathBuf,
+    file_size:         u64,
+    flen:              u64,
+    fname:             PathBuf,
     /// Width for printing fields containing file offsets
-    fwidth: usize,
+    fwidth:            usize,
     /// 1 in P chance of MS_INVALIDATE at each op
-    invalprob: Option<u32>,
+    invalprob:         Option<u32>,
     // What the file ought to contain
-    good_buf: Vec<u8>,
-    maxoplen: usize,
+    good_buf:          Vec<u8>,
+    maxoplen:          usize,
     /// Monitor these byte ranges in extra detail.
-    monitor: Option<(u64, u64)>,
-    nomapread: bool,
-    nomapwrite: bool,
+    monitor:           Option<(u64, u64)>,
+    nomapread:         bool,
+    nomapwrite:        bool,
     nomsyncafterwrite: bool,
-    norandomoplen: bool,
-    nosizechecks: bool,
-    numops: Option<u64>,
-    readbdy: u64,
+    norandomoplen:     bool,
+    nosizechecks:      bool,
+    numops:            Option<u64>,
+    readbdy:           u64,
     // 0-indexed operation number to begin real transfers.
-    simulatedopcount: u64,
+    simulatedopcount:  u64,
     /// Width for printing fields containing operation sizes
-    swidth: usize,
+    swidth:            usize,
     /// Width for printing the step number field
-    stepwidth: usize,
+    stepwidth:         usize,
     // File's original data
-    original_buf: Vec<u8>,
+    original_buf:      Vec<u8>,
     // Use OsPRng for full backwards-compatibility with the C fsx
-    rng: OsPRng,
+    rng:               OsPRng,
     // Number of steps completed so far
-    steps: u64,
-    file: File,
-    truncbdy: u64,
-    writebdy: u64,
+    steps:             u64,
+    file:              File,
+    truncbdy:          u64,
+    writebdy:          u64,
 }
 
 impl Exerciser {
@@ -242,10 +238,14 @@ impl Exerciser {
         }
     }
 
-    fn check_eofpage(offset: u64, file_size: u64, p: *const c_void, size: usize)
-    {
+    fn check_eofpage(
+        offset: u64,
+        file_size: u64,
+        p: *const c_void,
+        size: usize,
+    ) {
         let page_size = Self::getpagesize() as usize;
-        let page_mask =  page_size as isize - 1;
+        let page_mask = page_size as isize - 1;
         if offset + size as u64 <= file_size & !(page_mask as u64) {
             return;
         }
@@ -259,13 +259,18 @@ impl Exerciser {
         let last_page = unsafe {
             let last_page_p = ((p as *mut u8)
                 .offset((offset as isize & page_mask) + size as isize)
-                as isize & !page_mask)
-                as *const u8;
+                as isize
+                & !page_mask) as *const u8;
             std::slice::from_raw_parts(last_page_p, page_size)
         };
-        for (i, b) in last_page[file_size as usize & page_mask as usize..].iter().enumerate() {
+        for (i, b) in last_page[file_size as usize & page_mask as usize..]
+            .iter()
+            .enumerate()
+        {
             if *b != 0 {
-                error!("Mapped non-zero data past EoF ({:#x}) page offset {:#x} is {:#x}",
+                error!(
+                    "Mapped non-zero data past EoF ({:#x}) page offset {:#x} \
+                     is {:#x}",
                     file_size - 1,
                     (file_size & page_mask as u64) + i as u64,
                     *b
@@ -276,14 +281,15 @@ impl Exerciser {
     }
 
     fn check_size(&mut self) {
-        if ! self.nosizechecks {
-            let size = self.file.metadata()
-                .unwrap()
-                .len();
+        if !self.nosizechecks {
+            let size = self.file.metadata().unwrap().len();
             let size_by_seek = self.file.seek(SeekFrom::End(0)).unwrap();
             if size != self.file_size || size_by_seek != self.file_size {
-                error!("Size error: expected {:#x} but found {:#x} by stat and {:#x} by seek",
-                       self.file_size, size, size_by_seek);
+                error!(
+                    "Size error: expected {:#x} but found {:#x} by stat and \
+                     {:#x} by seek",
+                    self.file_size, size, size_by_seek
+                );
                 process::exit(1);
             }
         }
@@ -299,7 +305,7 @@ impl Exerciser {
         // We must remove and drop the old File before opening it, and that
         // requires swapping its contents.
         // Safe because we never access the uninitialized File object.
-        unsafe  {
+        unsafe {
             let placeholder: File = mem::MaybeUninit::zeroed().assume_init();
             drop(mem::replace(&mut self.file, placeholder));
             let newfile = OpenOptions::new()
@@ -332,9 +338,11 @@ impl Exerciser {
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
                 self.file.as_raw_fd(),
-                offset as i64 - pg_offset as i64
-            ).unwrap();
-            (p as *mut u8).add(pg_offset)
+                offset as i64 - pg_offset as i64,
+            )
+            .unwrap();
+            (p as *mut u8)
+                .add(pg_offset)
                 .copy_to(buf.as_mut_ptr(), size);
             Self::check_eofpage(offset, self.file_size, p, size);
         }
@@ -356,11 +364,11 @@ impl Exerciser {
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
                 self.file.as_raw_fd(),
-                offset as i64 - pg_offset as i64
-            ).unwrap();
-            ((p as *mut u8).add(pg_offset))
-                .copy_from(buf.as_ptr(), size);
-            if ! self.nomsyncafterwrite {
+                offset as i64 - pg_offset as i64,
+            )
+            .unwrap();
+            ((p as *mut u8).add(pg_offset)).copy_from(buf.as_ptr(), size);
+            if !self.nomsyncafterwrite {
                 msync(p, map_size, MsFlags::MS_SYNC).unwrap();
             }
             Self::check_eofpage(offset, self.file_size, p, size);
@@ -380,27 +388,35 @@ impl Exerciser {
 
     /// Wrapper around read-like operations
     fn read_like<F>(&mut self, op: &str, mut offset: u64, size: usize, f: F)
-        where F: Fn(&mut Exerciser, &mut [u8], u64, usize)
+    where
+        F: Fn(&mut Exerciser, &mut [u8], u64, usize),
     {
         offset -= offset % self.readbdy;
 
         if size == 0 {
-            debug!("{:width$} skipping zero size read",
-                   self.steps,
-                   width = self.stepwidth);
+            debug!(
+                "{:width$} skipping zero size read",
+                self.steps,
+                width = self.stepwidth
+            );
             return;
         }
         if size as u64 + offset > self.file_size {
-            debug!("{:width$} skipping seek/read past EoF",
-                   self.steps,
-                   width = self.stepwidth);
+            debug!(
+                "{:width$} skipping seek/read past EoF",
+                self.steps,
+                width = self.stepwidth
+            );
             return;
         }
         if self.steps <= self.simulatedopcount {
             return;
         }
         let loglevel = self.loglevel(offset, size);
-        log!(loglevel, "{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} bytes)",
+        log!(
+            loglevel,
+            "{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} \
+             bytes)",
             self.steps,
             op,
             offset,
@@ -408,7 +424,8 @@ impl Exerciser {
             size,
             stepwidth = self.stepwidth,
             fwidth = self.fwidth,
-            swidth = self.swidth);
+            swidth = self.swidth
+        );
         let mut temp_buf = vec![0u8; size];
         f(self, &mut temp_buf[..], offset, size);
         self.check_buffers(&temp_buf, offset)
@@ -416,14 +433,17 @@ impl Exerciser {
 
     /// Wrapper around write-like operations.
     fn write_like<F>(&mut self, op: &str, mut offset: u64, size: usize, f: F)
-        where F: Fn(&mut Exerciser, u64, usize, u64)
+    where
+        F: Fn(&mut Exerciser, u64, usize, u64),
     {
         offset -= offset % self.writebdy;
 
         if size == 0 {
-            debug!("{:width$} skipping zero size write", 
-                   self.steps,
-                   width = self.stepwidth);
+            debug!(
+                "{:width$} skipping zero size write",
+                self.steps,
+                width = self.stepwidth
+            );
             return;
         }
 
@@ -432,7 +452,11 @@ impl Exerciser {
         let cur_file_size = self.file_size;
         if self.file_size < offset + size as u64 {
             if self.file_size < offset {
-                safemem::write_bytes(&mut self.good_buf[self.file_size as usize ..offset as usize], 0)
+                safemem::write_bytes(
+                    &mut self.good_buf
+                        [self.file_size as usize..offset as usize],
+                    0,
+                )
             }
             self.file_size = offset + size as u64;
         }
@@ -442,7 +466,10 @@ impl Exerciser {
         }
 
         let loglevel = self.loglevel(offset, size);
-        log!(loglevel, "{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} bytes)",
+        log!(
+            loglevel,
+            "{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} \
+             bytes)",
             self.steps,
             op,
             offset,
@@ -450,7 +477,8 @@ impl Exerciser {
             size,
             stepwidth = self.stepwidth,
             fwidth = self.fwidth,
-            swidth = self.swidth);
+            swidth = self.swidth
+        );
 
         f(self, cur_file_size, size, offset)
     }
@@ -477,7 +505,8 @@ impl Exerciser {
             }
             self.good_buf[uoff] = (self.steps % 256) as u8;
             if uoff % 2 > 0 {
-                self.good_buf[uoff] = self.good_buf[uoff].wrapping_add(self.original_buf[uoff]);
+                self.good_buf[uoff] =
+                    self.good_buf[uoff].wrapping_add(self.original_buf[uoff]);
             }
             uoff += 1;
         }
@@ -492,8 +521,11 @@ impl Exerciser {
         if self.file_size == 0 || self.steps <= self.simulatedopcount {
             return;
         }
-        info!("{:width$} msync(MS_INVALIDATE)", self.steps, width =
-               self.stepwidth);
+        info!(
+            "{:width$} msync(MS_INVALIDATE)",
+            self.steps,
+            width = self.stepwidth
+        );
         let len = self.file_size as usize;
         unsafe {
             let p = mmap(
@@ -502,8 +534,9 @@ impl Exerciser {
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
                 self.file.as_raw_fd(),
-                0
-            ).unwrap();
+                0,
+            )
+            .unwrap();
             msync(p, 0, MsFlags::MS_INVALIDATE).unwrap();
             munmap(p, len).unwrap();
         }
@@ -614,7 +647,10 @@ impl Exerciser {
         size -= size % self.truncbdy;
 
         if size > self.file_size {
-            safemem::write_bytes(&mut self.good_buf[self.file_size as usize ..size as usize], 0)
+            safemem::write_bytes(
+                &mut self.good_buf[self.file_size as usize..size as usize],
+                0,
+            )
         }
         let cur_file_size = self.file_size;
         self.file_size = size;
@@ -632,12 +668,15 @@ impl Exerciser {
                 loglevel = Level::Warn;
             }
         }
-        log!(loglevel, "{:stepwidth$} truncate {:#fwidth$x} => {:#fwidth$x}",
-              self.steps,
-              cur_file_size,
-              size,
-              stepwidth = self.stepwidth,
-              fwidth = self.fwidth);
+        log!(
+            loglevel,
+            "{:stepwidth$} truncate {:#fwidth$x} => {:#fwidth$x}",
+            self.steps,
+            cur_file_size,
+            size,
+            stepwidth = self.stepwidth,
+            fwidth = self.fwidth
+        );
         self.file.set_len(size).unwrap();
     }
 
@@ -647,10 +686,15 @@ impl Exerciser {
 
     fn writefileimage(&mut self) {
         self.file.seek(SeekFrom::Start(0)).unwrap();
-        let written = self.file.write(&self.good_buf[..self.file_size as usize]).unwrap();
+        let written = self
+            .file
+            .write(&self.good_buf[..self.file_size as usize])
+            .unwrap();
         if written as u64 != self.file_size {
-            error!("short write: {:#x} bytes instead of {:#x}", written,
-                   self.file_size);
+            error!(
+                "short write: {:#x} bytes instead of {:#x}",
+                written, self.file_size
+            );
             process::exit(1);
         }
         self.file.set_len(self.file_size).unwrap();
@@ -679,9 +723,9 @@ impl From<Cli> for Exerciser {
         let swidth = field_width(cli.oplen, true);
         let stepwidth = field_width(
             cli.numops.map(|x| x as usize).unwrap_or(999999),
-            false
+            false,
         );
-        Exerciser{
+        Exerciser {
             closeprob: cli.closeprob,
             file,
             file_size: 0,
@@ -712,9 +756,7 @@ impl From<Cli> for Exerciser {
 }
 
 fn main() {
-    env_logger::builder()
-        .format_timestamp(None)
-        .init();
+    env_logger::builder().format_timestamp(None).init();
     let cli = Cli::parse();
     let mut exerciser = Exerciser::from(cli);
     exerciser.exercise()

@@ -235,11 +235,60 @@ struct Exerciser {
 }
 
 impl Exerciser {
-    fn check_buffers(&self, buf: &[u8], offset: u64) {
-        let size = buf.len();
+    fn check_buffers(&self, buf: &[u8], mut offset: u64) {
+        let mut size = buf.len();
         if self.good_buf[offset as usize..offset as usize + size] != buf[..] {
             error!("miscompare: offset= {:#x}, size = {:#x}", offset, size);
-            // TODO: detailed comparison
+            let mut i = 0;
+            let mut n = 0;
+            let mut good = 0;
+            let mut bad = 0;
+            let mut badoffset = 0;
+            let mut op = 0;
+            error!(
+                "{:fwidth$} GOOD  BAD  {:swidth$}",
+                "OFFSET",
+                "RANGE",
+                fwidth = self.fwidth,
+                swidth = self.swidth
+            );
+            while size > 0 {
+                let c = self.good_buf[offset as usize];
+                let t = buf[i];
+                if c != t {
+                    if n == 0 {
+                        good = c;
+                        bad = t;
+                        badoffset = offset;
+                        op = buf[if offset & 1 != 0 { i + 1 } else { i }];
+                    }
+                    n += 1;
+                }
+                offset += 1;
+                i += 1;
+                size -= 1;
+            }
+            assert!(n > 0);
+            // XXX The reported range may be a little too small, because
+            // some bytes in the damaged range may coincidentally match.  But
+            // this is the way that the C-based FSX reported it.
+            error!(
+                "{:#fwidth$x} {:#04x} {:#04x} {:#swidth$x}",
+                badoffset,
+                good,
+                bad,
+                n,
+                fwidth = self.fwidth,
+                swidth = self.swidth
+            );
+            if op > 0 {
+                error!("Step# (mod 256) for a misdirected write may be {}", op);
+            } else {
+                error!(
+                    "Step# for the bad data is unknown; check HOLE and EXTEND \
+                     ops"
+                );
+            }
             process::exit(1);
         }
     }

@@ -245,7 +245,7 @@ fn miscompare() {
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
         .env("RUST_LOG", "debug")
-        .args(["-N10", "-S3", "--inject", "5"])
+        .args(["-N10", "-S6", "--inject", "5"])
         .arg(tf.path())
         .assert()
         .failure();
@@ -255,13 +255,17 @@ fn miscompare() {
         .unwrap();
     assert_eq!(
         actual_stderr,
-        "[INFO  fsx] Using seed 3
-[INFO  fsx]  1 mapwrite 0x23713 .. 0x2cdc3 ( 0x96b1 bytes)
-[INFO  fsx]  2 write    0x3f5a4 .. 0x3ffff (  0xa5c bytes)
-[INFO  fsx]  3 read     0x159ec .. 0x178b0 ( 0x1ec5 bytes)
-[INFO  fsx]  4 mapread  0x2e519 .. 0x31705 ( 0x31ed bytes)
-[INFO  fsx]  6 mapread  0x1784f .. 0x2702a ( 0xf7dc bytes)
-[ERROR fsx] miscompare: offset= 0x1784f, size = 0xf7dc
+        "[INFO  fsx] Using seed 6
+[INFO  fsx]  1 write    0x21c37 .. 0x2d199 ( 0xb563 bytes)
+[INFO  fsx]  2 mapwrite 0x35509 .. 0x373de ( 0x1ed6 bytes)
+[INFO  fsx]  3 read     0x32a86 .. 0x373de ( 0x4959 bytes)
+[INFO  fsx]  4 mapread   0xbf7f .. 0x14c14 ( 0x8c96 bytes)
+[INFO  fsx]  6 read     0x16d69 .. 0x226d1 ( 0xb969 bytes)
+[INFO  fsx]  7 mapread  0x21125 .. 0x301cd ( 0xf0a9 bytes)
+[ERROR fsx] miscompare: offset= 0x21125, size = 0xf0a9
+[ERROR fsx] OFFSET  GOOD  BAD  RANGE  
+[ERROR fsx] 0x24dea 0x05 0x01  0x8942
+[ERROR fsx] Step# (mod 256) for a misdirected write may be 1
 "
     );
 }

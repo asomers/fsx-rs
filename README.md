@@ -45,7 +45,7 @@ C-based FSX, adapt like so:
 | -m                 | `env RUST_LOG=warn fsx -m xxx`             |
 | -p N               | `fsx ... 2>&1 \| awk '$3 % N == 0{print}'` |
 | -s                 | no equivalent                              |
-| -L                 | TODO                                       |
+| -L                 | -B -P ...                                  |
 | -D N               | `fsx ... 2>&1 \| awk '$3 >= N {print}`     |
 
 # License

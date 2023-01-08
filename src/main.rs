@@ -86,8 +86,6 @@ impl TypedValueParser for MonitorParser {
 #[derive(Debug, Parser)]
 //#[command(author, version, about, long_about = None)]
 struct Cli {
-    // TODO
-    // -L
     /// Beginning operation number
     #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]
     opnum: NonZeroU64,
@@ -128,6 +126,15 @@ struct Cli {
     /// Write boundary. 4k to make writes page aligned
     #[arg(short = 'w', default_value_t = 1)]
     writebdy: u64,
+
+    /// Block mode: no close/open and no file size changes
+    // Conflicts with options related to open/close, truncate, and file size
+    // Requires -P, so artifacts will be saved on a separate file system.
+    #[arg(short = 'B',
+          conflicts_with_all(["flen", "closeprob", "truncbdy"]),
+          requires("artifacts_dir")
+          )]
+    blockmode: bool,
 
     /// Total number of operations to do [default infinity]
     #[arg(short = 'N')]
@@ -197,6 +204,7 @@ impl Distribution<Op> for Standard {
 }
 struct Exerciser {
     artifacts_dir:     Option<PathBuf>,
+    blockmode:         bool,
     /// 1 in P chance of close+open at each op
     closeprob:         Option<u32>,
     /// Current file size
@@ -544,6 +552,7 @@ impl Exerciser {
             }
             self.file_size = offset + size as u64;
         }
+        assert!(!self.blockmode || self.file_size == cur_file_size);
 
         if self.skip() {
             return;
@@ -653,12 +662,15 @@ impl Exerciser {
         // It would be more natural to generate op and closeopen independently.
         // But do it this way for backwards compatibility with C.
         let rv: u32 = self.rng.gen();
-        let op = if self.nomapwrite {
-            // Sigh.  Yes, this is how C does it.
-            Op::from(rv % 4)
-        } else {
-            Op::from(rv)
-        };
+        // Sigh.  Yes, this is how C does it.
+        let mut op = Op::from(
+            rv % (3
+                + (if self.blockmode { 0 } else { 1 })
+                + if self.nomapwrite { 0 } else { 1 }),
+        );
+        if self.blockmode && op == Op::Truncate {
+            op = Op::MapWrite;
+        }
 
         if self.simulatedopcount > 0 && self.steps == self.simulatedopcount {
             self.writefileimage();
@@ -781,7 +793,9 @@ impl Exerciser {
             );
             self.fail();
         }
-        self.file.set_len(self.file_size).unwrap();
+        if !self.blockmode {
+            self.file.set_len(self.file_size).unwrap();
+        }
     }
 }
 
@@ -793,15 +807,24 @@ impl From<Cli> for Exerciser {
             seeder.gen::<u32>() & 0x7FFFFFFF
         });
         info!("Using seed {}", seed);
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&cli.fname)
-            .expect("Cannot create file");
+        let mut oo = OpenOptions::new();
+        oo.read(true).write(true);
+        if !cli.blockmode {
+            oo.create(true).truncate(true);
+        }
+        let mut file = oo.open(&cli.fname).expect("Cannot create file");
+        let flen = if cli.blockmode {
+            file.metadata().unwrap().len()
+        } else {
+            cli.flen.into()
+        };
+        let file_size = if cli.blockmode { flen } else { 0 };
         let mut original_buf = vec![0u8; cli.flen as usize];
         let good_buf = vec![0u8; cli.flen as usize];
+        if cli.blockmode {
+            // Zero existing file
+            file.write_all(&good_buf).unwrap();
+        }
         let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
         rng.fill_bytes(&mut original_buf[..]);
         let fwidth = field_width(cli.flen as usize, true);
@@ -812,10 +835,11 @@ impl From<Cli> for Exerciser {
         );
         Exerciser {
             artifacts_dir: cli.artifacts_dir,
+            blockmode: cli.blockmode,
             closeprob: cli.closeprob,
             file,
-            file_size: 0,
-            flen: cli.flen.into(),
+            file_size,
+            flen,
             fwidth,
             fname: cli.fname,
             good_buf,

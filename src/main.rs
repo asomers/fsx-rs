@@ -88,57 +88,30 @@ impl TypedValueParser for MonitorParser {
 struct Cli {
     // TODO
     // -L
-    /// Save artifacts to this directory (default ./)
-    #[arg(short = 'P', value_name = "dirpath")]
-    artifacts_dir: Option<PathBuf>,
+    /// Beginning operation number
+    #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]
+    opnum: NonZeroU64,
 
-    /// File name to operate on
-    fname: PathBuf,
+    /// 1/P chance of file close+open at each op [default infinity]
+    #[arg(short = 'c', value_name = "P")]
+    closeprob: Option<u32>,
+
+    /// 1/P chance of msync(MS_INVALIDATE) [default infinity]
+    #[arg(short = 'i', value_name = "P")]
+    invalprob: Option<u32>,
 
     /// Maximum file size
     // NB: could be u64, but the C-based FSX only works with 32-bit file sizes
     #[arg(short = 'l', default_value_t = 256 * 1024)]
     flen: u32,
 
-    /// Inject an error on step N
-    #[arg(long = "inject", hide = true, value_name = "N")]
-    inject: Option<u64>,
-
-    /// Beginning operation number
-    #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]
-    opnum: NonZeroU64,
-
-    /// 1/P chance of file close+open at each op (default infinity)
-    #[arg(short = 'c', value_name = "P")]
-    closeprob: Option<u32>,
-
-    /// 1/P chance of msync(MS_INVALIDATE) (default infinity)
-    #[arg(short = 'i', value_name = "P")]
-    invalprob: Option<u32>,
-
     /// Monitor specified byte range
     #[arg(short = 'm', value_name = "from:to", value_parser = MonitorParser{})]
     monitor: Option<(u64, u64)>,
 
-    /// Disable msync after mapwrite
-    #[arg(short = 'U')]
-    nomsyncafterwrite: bool,
-
-    /// Disable mmap reads
-    #[arg(short = 'R')]
-    nomapread: bool,
-
-    /// Disable mmap writes
-    #[arg(short = 'W')]
-    nomapwrite: bool,
-
-    /// Use oplen (see -o flag) for every op (default random)
-    #[arg(short = 'O')]
-    norandomoplen: bool,
-
-    /// Total number of operations to do (default infinity)
-    #[arg(short = 'N')]
-    numops: Option<u64>,
+    /// Disable verifications of file size
+    #[arg(short = 'n')]
+    nosizechecks: bool,
 
     /// Maximum size for operations
     #[arg(short = 'o', default_value_t = 65536)]
@@ -148,21 +121,48 @@ struct Cli {
     #[arg(short = 'r', default_value_t = 1)]
     readbdy: u64,
 
-    /// Seed for RNG
-    #[arg(short = 'S')]
-    seed: Option<u32>,
-
     /// Trunc boundary. 4k to make truncs page aligned
     #[arg(short = 't', default_value_t = 1)]
     truncbdy: u64,
 
-    /// Disable verifications of file size
-    #[arg(short = 'n')]
-    nosizechecks: bool,
-
     /// Write boundary. 4k to make writes page aligned
     #[arg(short = 'w', default_value_t = 1)]
     writebdy: u64,
+
+    /// Total number of operations to do [default infinity]
+    #[arg(short = 'N')]
+    numops: Option<u64>,
+
+    /// Use oplen (see -o flag) for every op [default random]
+    #[arg(short = 'O')]
+    norandomoplen: bool,
+
+    /// Save artifacts to this directory [default ./]
+    #[arg(short = 'P', value_name = "dirpath")]
+    artifacts_dir: Option<PathBuf>,
+
+    /// Seed for RNG
+    #[arg(short = 'S')]
+    seed: Option<u32>,
+
+    /// Disable mmap writes
+    #[arg(short = 'W')]
+    nomapwrite: bool,
+
+    /// Disable mmap reads
+    #[arg(short = 'R')]
+    nomapread: bool,
+
+    /// Disable msync after mapwrite
+    #[arg(short = 'U')]
+    nomsyncafterwrite: bool,
+
+    /// File name to operate on
+    fname: PathBuf,
+
+    /// Inject an error on step N
+    #[arg(long = "inject", hide = true, value_name = "N")]
+    inject: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

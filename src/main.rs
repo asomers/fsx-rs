@@ -765,7 +765,8 @@ impl From<Cli> for Exerciser {
     fn from(cli: Cli) -> Self {
         let seed = cli.seed.unwrap_or_else(|| {
             let mut seeder = thread_rng();
-            seeder.gen()
+            // The legacy FSX only uses 31-bit seeds.
+            seeder.gen::<u32>() & 0x7FFFFFFF
         });
         info!("Using seed {}", seed);
         let file = OpenOptions::new()

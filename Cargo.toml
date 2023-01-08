@@ -13,7 +13,7 @@ clap = { version = "4.0", features = ["derive"] }
 env_logger = "0.10.0"
 libc = "0.2.139"
 log = "0.4.17"
-nix = { version = "0.26.0", default-features = false, features = [ "mman" ]}
+nix = { version = "0.26.0", default-features = false, features = [ "feature", "mman" ]}
 rand = { version = "0.8.5" }
 safemem = "0.3.0"
 

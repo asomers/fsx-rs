@@ -12,7 +12,10 @@ use std::{
 
 use libc::c_void;
 use log::{Level, debug, error, info, log};
-use nix::sys::mman::{ProtFlags, MapFlags, MsFlags, mmap, munmap, msync};
+use nix::{
+    sys::mman::{ProtFlags, MapFlags, MsFlags, mmap, munmap, msync},
+    unistd::{SysconfVar, sysconf}
+};
 use rand::{         
     Rng,            
     RngCore,
@@ -477,7 +480,7 @@ impl Exerciser {
 
     fn getpagesize() -> i32 {
         // This function is inherently safe
-        unsafe { libc::getpagesize() }
+        sysconf(SysconfVar::PAGE_SIZE).unwrap().unwrap() as i32
     }
 
     fn invalidate(&self) {

@@ -1,5 +1,5 @@
 // vim: tw=80
-use std::{ffi::CString, process::Command};
+use std::{ffi::CString, fs, process::Command};
 
 use assert_cmd::prelude::*;
 use pretty_assertions::assert_eq;
@@ -268,4 +268,13 @@ fn miscompare() {
 [ERROR fsx] Step# (mod 256) for a misdirected write may be 1
 "
     );
+    // There should be a .fsxgood artifact
+    let mut fsxgoodfname = tf.path().to_owned();
+    let mut final_component = fsxgoodfname.file_name().unwrap().to_owned();
+    final_component.push(".fsxgood");
+    fsxgoodfname.set_file_name(final_component);
+    assert_eq!(fs::metadata(&fsxgoodfname).unwrap().len(), 262144);
+
+    // finally, clean it up.
+    fs::remove_file(&fsxgoodfname).unwrap();
 }

@@ -19,7 +19,7 @@ use clap::{
     Parser,
 };
 use libc::c_void;
-use log::{debug, error, info, log, Level};
+use log::{debug, error, info, log, warn, Level};
 use nix::{
     sys::mman::{mmap, msync, munmap, MapFlags, MsFlags, ProtFlags},
     unistd::{sysconf, SysconfVar},
@@ -289,19 +289,14 @@ impl Exerciser {
                      ops"
                 );
             }
-            process::exit(1);
+            self.fail();
         }
     }
 
-    fn check_eofpage(
-        offset: u64,
-        file_size: u64,
-        p: *const c_void,
-        size: usize,
-    ) {
+    fn check_eofpage(&self, offset: u64, p: *const c_void, size: usize) {
         let page_size = Self::getpagesize() as usize;
         let page_mask = page_size as isize - 1;
-        if offset + size as u64 <= file_size & !(page_mask as u64) {
+        if offset + size as u64 <= self.file_size & !(page_mask as u64) {
             return;
         }
 
@@ -318,7 +313,7 @@ impl Exerciser {
                 & !page_mask) as *const u8;
             std::slice::from_raw_parts(last_page_p, page_size)
         };
-        for (i, b) in last_page[file_size as usize & page_mask as usize..]
+        for (i, b) in last_page[self.file_size as usize & page_mask as usize..]
             .iter()
             .enumerate()
         {
@@ -326,11 +321,11 @@ impl Exerciser {
                 error!(
                     "Mapped non-zero data past EoF ({:#x}) page offset {:#x} \
                      is {:#x}",
-                    file_size - 1,
-                    (file_size & page_mask as u64) + i as u64,
+                    self.file_size - 1,
+                    (self.file_size & page_mask as u64) + i as u64,
                     *b
                 );
-                process::exit(1);
+                self.fail();
             }
         }
     }
@@ -345,7 +340,7 @@ impl Exerciser {
                      {:#x} by seek",
                     self.file_size, size, size_by_seek
                 );
-                process::exit(1);
+                self.fail();
             }
         }
     }
@@ -378,7 +373,7 @@ impl Exerciser {
         let read = self.file.read(buf).unwrap();
         if read < size {
             error!("short read: {:#x} bytes instead of {:#x}", read, size);
-            process::exit(1);
+            self.fail();
         }
     }
 
@@ -399,7 +394,7 @@ impl Exerciser {
             (p as *mut u8)
                 .add(pg_offset)
                 .copy_to(buf.as_mut_ptr(), size);
-            Self::check_eofpage(offset, self.file_size, p, size);
+            self.check_eofpage(offset, p, size);
         }
     }
 
@@ -426,7 +421,7 @@ impl Exerciser {
             if !self.nomsyncafterwrite {
                 msync(p, map_size, MsFlags::MS_SYNC).unwrap();
             }
-            Self::check_eofpage(offset, self.file_size, p, size);
+            self.check_eofpage(offset, p, size);
             munmap(p, map_size).unwrap();
         }
     }
@@ -437,8 +432,26 @@ impl Exerciser {
         let written = self.file.write(buf).unwrap();
         if written != size {
             error!("short write: {:#x} bytes instead of {:#x}", written, size);
-            process::exit(1);
+            self.fail();
         }
+    }
+
+    /// Report a failure and exit.
+    fn fail(&self) {
+        let mut fsxgoodfname = self.fname.clone();
+        let mut final_component = fsxgoodfname.file_name().unwrap().to_owned();
+        final_component.push(".fsxgood");
+        fsxgoodfname.set_file_name(final_component);
+        let mut fsxgoodfile = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&fsxgoodfname)
+            .expect("Cannot create fsxgood file");
+        if let Err(e) = fsxgoodfile.write_all(&self.good_buf) {
+            warn!("writing {}: {}", fsxgoodfname.display(), e);
+        }
+        process::exit(1);
     }
 
     /// Wrapper around read-like operations
@@ -755,7 +768,7 @@ impl Exerciser {
                 "short write: {:#x} bytes instead of {:#x}",
                 written, self.file_size
             );
-            process::exit(1);
+            self.fail();
         }
         self.file.set_len(self.file_size).unwrap();
     }

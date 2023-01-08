@@ -88,7 +88,10 @@ impl TypedValueParser for MonitorParser {
 struct Cli {
     // TODO
     // -L
-    // -P
+    /// Save artifacts to this directory (default ./)
+    #[arg(short = 'P', value_name = "dirpath")]
+    artifacts_dir: Option<PathBuf>,
+
     /// File name to operate on
     fname: PathBuf,
 
@@ -193,6 +196,7 @@ impl Distribution<Op> for Standard {
     }
 }
 struct Exerciser {
+    artifacts_dir:     Option<PathBuf>,
     /// 1 in P chance of close+open at each op
     closeprob:         Option<u32>,
     /// Current file size
@@ -438,10 +442,17 @@ impl Exerciser {
 
     /// Report a failure and exit.
     fn fail(&self) {
-        let mut fsxgoodfname = self.fname.clone();
-        let mut final_component = fsxgoodfname.file_name().unwrap().to_owned();
+        let mut final_component =
+            self.fname.as_path().file_name().unwrap().to_owned();
         final_component.push(".fsxgood");
-        fsxgoodfname.set_file_name(final_component);
+        let mut fsxgoodfname = if let Some(d) = &self.artifacts_dir {
+            d.clone()
+        } else {
+            let mut fname = self.fname.clone();
+            fname.pop();
+            fname
+        };
+        fsxgoodfname.push(final_component);
         let mut fsxgoodfile = OpenOptions::new()
             .write(true)
             .create(true)
@@ -800,6 +811,7 @@ impl From<Cli> for Exerciser {
             false,
         );
         Exerciser {
+            artifacts_dir: cli.artifacts_dir,
             closeprob: cli.closeprob,
             file,
             file_size: 0,

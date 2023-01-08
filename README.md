@@ -46,7 +46,6 @@ C-based FSX, adapt like so:
 | -p N               | `fsx ... 2>&1 \| awk '$3 % N == 0{print}'` |
 | -s                 | no equivalent                              |
 | -L                 | TODO                                       |
-| -P                 | TODO                                       |
 | -D N               | `fsx ... 2>&1 \| awk '$3 >= N {print}`     |
 
 # License

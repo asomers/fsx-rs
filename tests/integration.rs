@@ -4,7 +4,7 @@ use std::{ffi::CString, fs, process::Command};
 use assert_cmd::prelude::*;
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempDir};
 
 /// Test that fsx-rs's testing sequence is stable, and identical to the C-based
 /// FSX's as of FreeBSD 14.0.
@@ -273,6 +273,33 @@ fn miscompare() {
     let mut final_component = fsxgoodfname.file_name().unwrap().to_owned();
     final_component.push(".fsxgood");
     fsxgoodfname.set_file_name(final_component);
+    assert_eq!(fs::metadata(&fsxgoodfname).unwrap().len(), 262144);
+
+    // finally, clean it up.
+    fs::remove_file(&fsxgoodfname).unwrap();
+}
+
+#[test]
+fn artifacts_dir() {
+    let tf = NamedTempFile::new().unwrap();
+    let artifacts_dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("fsx")
+        .unwrap()
+        .env("RUST_LOG", "debug")
+        .args(["-N2", "-S2", "--inject", "1", "-P"])
+        .arg(artifacts_dir.path())
+        .arg(tf.path())
+        .assert()
+        .failure();
+    // Don't bother checking stderr; we cover that in the miscompare test.  Here
+    // we're just checking the location of the artifacts.
+
+    // Check the location of the .fsxgood artifact
+    let mut fsxgoodfname = artifacts_dir.path().to_owned();
+    let mut final_component = tf.path().file_name().unwrap().to_owned();
+    final_component.push(".fsxgood");
+    fsxgoodfname.push(final_component);
     assert_eq!(fs::metadata(&fsxgoodfname).unwrap().len(), 262144);
 
     // finally, clean it up.

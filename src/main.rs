@@ -1,6 +1,7 @@
 // vim: tw=80
 use std::{
     ffi::OsStr,
+    fmt,
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     mem,
@@ -179,6 +180,18 @@ enum Op {
     MapRead,
     Truncate,
     MapWrite,
+}
+
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Op::Read => "read".fmt(f),
+            Op::Write => "write".fmt(f),
+            Op::MapRead => "mapread".fmt(f),
+            Op::Truncate => "truncate".fmt(f),
+            Op::MapWrite => "mapwrite".fmt(f),
+        }
+    }
 }
 
 impl From<u32> for Op {
@@ -474,7 +487,7 @@ impl Exerciser {
     }
 
     /// Wrapper around read-like operations
-    fn read_like<F>(&mut self, op: &str, mut offset: u64, size: usize, f: F)
+    fn read_like<F>(&mut self, op: Op, mut offset: u64, size: usize, f: F)
     where
         F: Fn(&mut Exerciser, &mut [u8], u64, usize),
     {
@@ -524,7 +537,7 @@ impl Exerciser {
     }
 
     /// Wrapper around write-like operations.
-    fn write_like<F>(&mut self, op: &str, mut offset: u64, size: usize, f: F)
+    fn write_like<F>(&mut self, op: Op, mut offset: u64, size: usize, f: F)
     where
         F: Fn(&mut Exerciser, u64, usize, u64),
     {
@@ -647,15 +660,15 @@ impl Exerciser {
     }
 
     fn mapread(&mut self, offset: u64, size: usize) {
-        self.read_like("mapread", offset, size, Self::domapread)
+        self.read_like(Op::MapRead, offset, size, Self::domapread)
     }
 
     fn mapwrite(&mut self, offset: u64, size: usize) {
-        self.write_like("mapwrite", offset, size, Self::domapwrite)
+        self.write_like(Op::MapWrite, offset, size, Self::domapwrite)
     }
 
     fn read(&mut self, offset: u64, size: usize) {
-        self.read_like("read", offset, size, Self::doread)
+        self.read_like(Op::Read, offset, size, Self::doread)
     }
 
     fn step(&mut self) {
@@ -777,7 +790,7 @@ impl Exerciser {
     }
 
     fn write(&mut self, offset: u64, size: usize) {
-        self.write_like("write", offset, size, Self::dowrite)
+        self.write_like(Op::Write, offset, size, Self::dowrite)
     }
 
     fn writefileimage(&mut self) {

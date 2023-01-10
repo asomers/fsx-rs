@@ -32,6 +32,7 @@ use rand::{
     RngCore,
     SeedableRng,
 };
+use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 
 mod prng;
 use prng::OsPRng;
@@ -215,6 +216,22 @@ impl Distribution<Op> for Standard {
         Op::from(rng.next_u32())
     }
 }
+
+#[derive(Clone, Copy)]
+enum LogEntry {
+    Skip(Op),
+    // offset, size
+    Read(u64, usize),
+    // old file len, offset, size
+    Write(u64, u64, usize),
+    // offset, size
+    MapRead(u64, usize),
+    // old file len, new file len
+    Truncate(u64, u64),
+    // old file len, offset, size
+    MapWrite(u64, u64, usize),
+}
+
 struct Exerciser {
     artifacts_dir:     Option<PathBuf>,
     blockmode:         bool,
@@ -241,6 +258,8 @@ struct Exerciser {
     norandomoplen:     bool,
     nosizechecks:      bool,
     numops:            Option<u64>,
+    // Records most recent operations for future dumping
+    oplog:             AllocRingBuffer<LogEntry>,
     readbdy:           u64,
     // 0-indexed operation number to begin real transfers.
     simulatedopcount:  u64,
@@ -461,28 +480,104 @@ impl Exerciser {
         }
     }
 
+    /// Dump the contents of the oplog
+    fn dump_logfile(&self) {
+        let mut i = self.steps - self.oplog.len() as u64;
+        error!("LOG DUMP");
+        for le in self.oplog.iter() {
+            match le {
+                LogEntry::Skip(op) => error!(
+                    "{:stepwidth$} SKIPPED  ({})",
+                    i,
+                    op,
+                    stepwidth = self.stepwidth
+                ),
+                LogEntry::Read(offset, size) => error!(
+                    "{:stepwidth$} READ     {:#fwidth$x} => {:#fwidth$x} \
+                     ({:#swidth$x} bytes)",
+                    i,
+                    offset,
+                    offset + *size as u64,
+                    size,
+                    stepwidth = self.stepwidth,
+                    fwidth = self.fwidth,
+                    swidth = self.swidth
+                ),
+                LogEntry::MapRead(offset, size) => error!(
+                    "{:stepwidth$} MAPREAD  {:#fwidth$x} => {:#fwidth$x} \
+                     ({:#swidth$x} bytes)",
+                    i,
+                    offset,
+                    offset + *size as u64,
+                    size,
+                    stepwidth = self.stepwidth,
+                    fwidth = self.fwidth,
+                    swidth = self.swidth
+                ),
+                LogEntry::Write(old_len, offset, size) => {
+                    let sym = if offset > old_len {
+                        " HOLE"
+                    } else if offset + *size as u64 > *old_len {
+                        " EXTEND"
+                    } else {
+                        ""
+                    };
+                    error!(
+                        "{:stepwidth$} WRITE    {:#fwidth$x} => {:#fwidth$x} \
+                         ({:#swidth$x} bytes){}",
+                        i,
+                        offset,
+                        offset + *size as u64,
+                        size,
+                        sym,
+                        stepwidth = self.stepwidth,
+                        fwidth = self.fwidth,
+                        swidth = self.swidth
+                    )
+                }
+                LogEntry::MapWrite(old_len, offset, size) => {
+                    let sym = if offset > old_len {
+                        " HOLE"
+                    } else if offset + *size as u64 > *old_len {
+                        " EXTEND"
+                    } else {
+                        ""
+                    };
+                    error!(
+                        "{:stepwidth$} MAPWRITE {:#fwidth$x} => {:#fwidth$x} \
+                         ({:#swidth$x} bytes){}",
+                        i,
+                        offset,
+                        offset + *size as u64,
+                        size,
+                        sym,
+                        stepwidth = self.stepwidth,
+                        fwidth = self.fwidth,
+                        swidth = self.swidth
+                    )
+                }
+                LogEntry::Truncate(old_len, new_len) => {
+                    let dir = if new_len > old_len { "UP" } else { "DOWN" };
+                    error!(
+                        "{:stepwidth$} TRUNCATE  {:4} from {:#fwidth$x} to \
+                         {:#fwidth$x}",
+                        i,
+                        dir,
+                        old_len,
+                        new_len,
+                        stepwidth = self.stepwidth,
+                        fwidth = self.fwidth
+                    );
+                }
+            }
+            i += 1;
+        }
+    }
+
     /// Report a failure and exit.
     fn fail(&self) {
-        let mut final_component =
-            self.fname.as_path().file_name().unwrap().to_owned();
-        final_component.push(".fsxgood");
-        let mut fsxgoodfname = if let Some(d) = &self.artifacts_dir {
-            d.clone()
-        } else {
-            let mut fname = self.fname.clone();
-            fname.pop();
-            fname
-        };
-        fsxgoodfname.push(final_component);
-        let mut fsxgoodfile = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&fsxgoodfname)
-            .expect("Cannot create fsxgood file");
-        if let Err(e) = fsxgoodfile.write_all(&self.good_buf) {
-            warn!("writing {}: {}", fsxgoodfname.display(), e);
-        }
+        self.dump_logfile();
+        self.save_goodfile();
         process::exit(1);
     }
 
@@ -494,6 +589,7 @@ impl Exerciser {
         offset -= offset % self.readbdy;
 
         if size == 0 {
+            self.oplog.push(LogEntry::Skip(op));
             debug!(
                 "{:width$} skipping zero size read",
                 self.steps,
@@ -502,12 +598,18 @@ impl Exerciser {
             return;
         }
         if size as u64 + offset > self.file_size {
+            self.oplog.push(LogEntry::Skip(op));
             debug!(
                 "{:width$} skipping seek/read past EoF",
                 self.steps,
                 width = self.stepwidth
             );
             return;
+        }
+        if op == Op::Read {
+            self.oplog.push(LogEntry::Read(offset, size));
+        } else {
+            self.oplog.push(LogEntry::MapRead(offset, size));
         }
         if self.skip() {
             return;
@@ -531,6 +633,29 @@ impl Exerciser {
         self.check_buffers(&temp_buf, offset)
     }
 
+    fn save_goodfile(&self) {
+        let mut final_component =
+            self.fname.as_path().file_name().unwrap().to_owned();
+        final_component.push(".fsxgood");
+        let mut fsxgoodfname = if let Some(d) = &self.artifacts_dir {
+            d.clone()
+        } else {
+            let mut fname = self.fname.clone();
+            fname.pop();
+            fname
+        };
+        fsxgoodfname.push(final_component);
+        let mut fsxgoodfile = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&fsxgoodfname)
+            .expect("Cannot create fsxgood file");
+        if let Err(e) = fsxgoodfile.write_all(&self.good_buf) {
+            warn!("writing {}: {}", fsxgoodfname.display(), e);
+        }
+    }
+
     /// Should this step be skipped as not part of the test plan?
     fn skip(&self) -> bool {
         self.steps <= self.simulatedopcount || Some(self.steps) == self.inject
@@ -544,6 +669,7 @@ impl Exerciser {
         offset -= offset % self.writebdy;
 
         if size == 0 {
+            self.oplog.push(LogEntry::Skip(op));
             debug!(
                 "{:width$} skipping zero size write",
                 self.steps,
@@ -566,6 +692,14 @@ impl Exerciser {
             self.file_size = offset + size as u64;
         }
         assert!(!self.blockmode || self.file_size == cur_file_size);
+
+        if op == Op::Write {
+            self.oplog
+                .push(LogEntry::Write(cur_file_size, offset, size));
+        } else {
+            self.oplog
+                .push(LogEntry::MapWrite(cur_file_size, offset, size));
+        }
 
         if self.skip() {
             return;
@@ -764,6 +898,9 @@ impl Exerciser {
         let cur_file_size = self.file_size;
         self.file_size = size;
 
+        self.oplog
+            .push(LogEntry::Truncate(cur_file_size, self.file_size));
+
         if self.skip() {
             return;
         }
@@ -866,6 +1003,7 @@ impl From<Cli> for Exerciser {
             norandomoplen: cli.norandomoplen,
             nosizechecks: cli.nosizechecks,
             numops: cli.numops,
+            oplog: AllocRingBuffer::with_capacity(1024),
             readbdy: cli.readbdy,
             simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
             swidth,

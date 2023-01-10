@@ -288,6 +288,14 @@ fn miscompare() {
 [ERROR fsx] OFFSET  GOOD  BAD  RANGE  
 [ERROR fsx] 0x24dea 0x05 0x01  0x8942
 [ERROR fsx] Step# (mod 256) for a misdirected write may be 1
+[ERROR fsx] LOG DUMP
+[ERROR fsx]  0 WRITE    0x21c37 => 0x2d19a ( 0xb563 bytes) HOLE
+[ERROR fsx]  1 MAPWRITE 0x35509 => 0x373df ( 0x1ed6 bytes) HOLE
+[ERROR fsx]  2 READ     0x32a86 => 0x373df ( 0x4959 bytes)
+[ERROR fsx]  3 MAPREAD   0xbf7f => 0x14c15 ( 0x8c96 bytes)
+[ERROR fsx]  4 WRITE    0x24dea => 0x2d72d ( 0x8943 bytes)
+[ERROR fsx]  5 READ     0x16d69 => 0x226d2 ( 0xb969 bytes)
+[ERROR fsx]  6 MAPREAD  0x21125 => 0x301ce ( 0xf0a9 bytes)
 "
     );
     // There should be a .fsxgood artifact

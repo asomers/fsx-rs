@@ -48,6 +48,14 @@ C-based FSX, adapt like so:
 | -L                 | -B -P ...                                  |
 | -D N               | `fsx ... 2>&1 \| awk '$3 >= N {print}`     |
 
+# Minimum Supported Rust Version (MSRV)
+
+fsx does not guarantee any specific MSRV.  Rather, it guarantees compatibility
+with the oldest rustc shipped in the package collection of each supported
+operating system.
+
+* https://www.freshports.org/lang/rust/
+
 # License
 
 `fsx` is distributed until the Apple Public Source License version 2.0.  See

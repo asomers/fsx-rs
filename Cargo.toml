@@ -7,6 +7,7 @@ license = "APSL-2.0"
 repository = "TODO"
 description = "File System eXerciser"
 categories = ["filesystem", "development-tools::testing"]
+rust-version = "1.63"
 
 [dependencies]
 clap = { version = "4.0.12", features = ["derive"] }

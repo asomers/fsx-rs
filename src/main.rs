@@ -6,7 +6,7 @@ use std::{
     io::{Read, Seek, SeekFrom, Write},
     mem,
     num::NonZeroU64,
-    os::fd::{AsRawFd, IntoRawFd},
+    os::unix::io::{AsRawFd, IntoRawFd},
     path::PathBuf,
     process,
 };

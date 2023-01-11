@@ -1,5 +1,7 @@
 // vim: tw=80
-use std::{ffi::CString, fs, process::Command};
+#[cfg(target_os = "freebsd")]
+use std::ffi::CString;
+use std::{fs, process::Command};
 
 use assert_cmd::prelude::*;
 use pretty_assertions::assert_eq;
@@ -8,6 +10,7 @@ use tempfile::{NamedTempFile, TempDir};
 
 /// Test that fsx-rs's testing sequence is stable, and identical to the C-based
 /// FSX's as of FreeBSD 14.0.
+#[cfg(target_os = "freebsd")] // Depends on exact PRNG output
 #[rstest]
 // Equivalent to C's fsx -N 10 -S 4 -o 65536 -O.  Includes both MapRead
 // and MapWrite.
@@ -260,7 +263,8 @@ fn stability(#[case] args: &str, #[case] stderr: &str) {
     assert_eq!(actual_stderr, stderr);
 }
 
-#[test]
+#[cfg_attr(not(target_os = "freebsd"), allow(unused))]
+#[rstest]
 fn miscompare() {
     let tf = NamedTempFile::new().unwrap();
 
@@ -271,13 +275,15 @@ fn miscompare() {
         .arg(tf.path())
         .assert()
         .failure();
-    let actual_stderr = CString::new(cmd.get_output().stderr.clone())
-        .unwrap()
-        .into_string()
-        .unwrap();
-    assert_eq!(
-        actual_stderr,
-        "[INFO  fsx] Using seed 6
+    #[cfg(target_os = "freebsd")] // Depends on exact PRNG output
+    {
+        let actual_stderr = CString::new(cmd.get_output().stderr.clone())
+            .unwrap()
+            .into_string()
+            .unwrap();
+        assert_eq!(
+            actual_stderr,
+            "[INFO  fsx] Using seed 6
 [INFO  fsx]  1 write    0x21c37 .. 0x2d199 ( 0xb563 bytes)
 [INFO  fsx]  2 mapwrite 0x35509 .. 0x373de ( 0x1ed6 bytes)
 [INFO  fsx]  3 read     0x32a86 .. 0x373de ( 0x4959 bytes)
@@ -297,7 +303,8 @@ fn miscompare() {
 [ERROR fsx]  5 READ     0x16d69 => 0x226d2 ( 0xb969 bytes)
 [ERROR fsx]  6 MAPREAD  0x21125 => 0x301ce ( 0xf0a9 bytes)
 "
-    );
+        );
+    }
     // There should be a .fsxgood artifact
     let mut fsxgoodfname = tf.path().to_owned();
     let mut final_component = fsxgoodfname.file_name().unwrap().to_owned();

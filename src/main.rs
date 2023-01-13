@@ -106,7 +106,7 @@ struct Cli {
     flen: u32,
 
     /// Monitor specified byte range
-    #[arg(short = 'm', value_name = "from:to", value_parser = MonitorParser{})]
+    #[arg(short = 'm', value_name = "FROM:TO", value_parser = MonitorParser{})]
     monitor: Option<(u64, u64)>,
 
     /// Disable verifications of file size
@@ -129,7 +129,7 @@ struct Cli {
     #[arg(short = 'w', default_value_t = 1)]
     writebdy: u64,
 
-    /// Block mode: no close/open and no file size changes
+    /// Block mode: never change the file's size.
     // Conflicts with options related to open/close, truncate, and file size
     // Requires -P, so artifacts will be saved on a separate file system.
     #[arg(short = 'B',
@@ -147,7 +147,7 @@ struct Cli {
     norandomoplen: bool,
 
     /// Save artifacts to this directory [default ./]
-    #[arg(short = 'P', value_name = "dirpath")]
+    #[arg(short = 'P', value_name = "DIRPATH")]
     artifacts_dir: Option<PathBuf>,
 
     /// Seed for RNG
@@ -163,13 +163,14 @@ struct Cli {
     nomapread: bool,
 
     /// Disable msync after mapwrite
-    #[arg(short = 'U')]
+    #[arg(short = 'U', conflicts_with("nomapwrite"))]
     nomsyncafterwrite: bool,
 
     /// File name to operate on
     fname: PathBuf,
 
     /// Inject an error on step N
+    // This option mainly exists just for the sake of the integration tests.
     #[arg(long = "inject", hide = true, value_name = "N")]
     inject: Option<u64>,
 }

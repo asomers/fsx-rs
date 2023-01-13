@@ -2,6 +2,9 @@
 
 Test file system I/O routines for correctness, with random input.
 
+[![Build Status](https://api.cirrus-ci.com/github/asomers/fsx-rs.svg)](https://cirrus-ci.com/github/asomers/fsx-rs)
+[![Crates.io](https://img.shields.io/crates/v/fsx.svg)](https://crates.io/crates/fsx)
+
 # Overview
 
 `fsx` generates a pseudorandom sequence of file modifications and applies them

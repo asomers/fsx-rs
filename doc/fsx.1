@@ -1,0 +1,167 @@
+.Dd January 12, 2023
+.Dt FSX 1
+.Os
+.Sh NAME
+.Nm fsx
+.Nd File System eXerciser
+.Sh SYNOPSIS
+.Nm
+.Op Fl nBOWRUh
+.Op Fl b Ar OPNUM
+.Op Fl c Ar P
+.Op Fl i Ar P
+.Op Fl l Ar FLEN
+.Op Fl m Ar FROM:TO
+.Op Fl o Ar OPLEN
+.Op Fl r Ar READBDY
+.Op Fl t Ar TRUNCBDY
+.Op Fl w Ar WRITEBDY
+.Op Fl N Ar NUMOPS
+.Op Fl P Ar DIRPATH
+.Op Fl S Ar SEED
+.Op Ar FILENAME
+.Sh DESCRIPTION
+The
+.Nm
+utility tests file system I/O routines for correctness, with random input.
+It generates a pseudorandom sequence of file modifications and applies them
+to a file on the file system under test.
+On every read, it verifies the expected data.
+It's highly configurable, and the test sequence is 100% reproducible according
+to a seed value.
+If a failure is detected,
+.Nm
+will log the most recent operations and write the expected file contents to
+.Ar FILENAME.fsxgood .
+.Pp
+The options are as follows:
+.Bl -tag -width indent
+.It Fl b Ar OPNUM
+Begin real I/O at operation number
+.Ar OPNUM .
+Previous operations will be simulated, and their cumulative effect written
+to the file just before real I/O starts.
+.It Fl c Ar P
+After each operation, randomly close and reopen the file with a probability of
+1 in
+.Ar P .
+.It Fl i Ar P
+After each operation, randomly call
+.Fn msync _ _ MS_INVALIDATE
+with a probability of
+1 in
+.Ar P .
+.It Fl l Ar FLEN
+Use
+.Ar FLEN
+as the maximum size for the file under test.
+.It Fl m Ar FROM:TO
+Monitor operations within the byte range
+.Ar [FROM,TO).
+All operations in this range will be logged at the
+.Dv LOG_WARN
+log level.
+.It Fl n
+Disable verifications of file size.
+.It Fl o Ar OPLEN
+Generate read and write operations of between 0 and
+.Ar OPLEN
+bytes in size, with uniform distribution.
+.It Fl r Ar READBDY
+Align reads to multiples of
+.Ar READBDY
+bytes.
+.It Fl t Ar TRUNCBDY
+Align truncations to multiples of
+.Ar TRUNCBDY
+bytes.
+.It Fl w Ar WRITEBDY
+Align writes to multiples of
+.Ar WRITEBDY
+bytes.
+.It Fl B
+Block mode.
+Never change the file's size.
+This option is useful for testing block devices rather than file systems.
+When using block mode,
+.Nm
+will never change the file's size, even at startup.
+The user must ensure that the file under test has the desired size before
+starting
+.Nm .
+.It Fl N Ar NUMOPS
+Terminate after processing
+.Ar NUMOPS
+operations.
+If this option is not specified,
+.Nm
+will run until interrupted or a failure is detected.
+.It Fl O
+Instead of generating read and write operations of between 0 and
+.Ar OPLEN
+bytes, always use exactly
+.Ar OPLEN .
+.It Fl P Ar DIRPATH
+On failure, save artifacts to the directory named by
+.Ar DIRPATH .
+.It Fl S Ar SEED
+Seed the random number generator with this value.
+By default,
+.Nm
+will select a seed pseudorandomly, and log it to
+.Em stderr .
+.It Fl W
+Disable the use of
+.Fn mmap
+for writing.
+.It Fl R
+Disable the use of
+.Fn mmap
+for reading.
+.It Fl U
+Disable the use of
+.Fn msync
+after writing with
+.Fn mmap .
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width indent
+.It Ev RUST_LOG
+Controls the verbosity level of messages logged to
+.Em stderr .
+Valid values are
+.Dv trace ,
+.Dv debug ,
+.Dv info ,
+.Dv warn ,
+and
+.Dv error .
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh HISTORY
+The first version of
+.Nm
+was written in C at Apple Computer, beginning in 1998,
+by
+.An Avadis Tevanian Jr .
+It was imported into
+.Fx 5.0
+by
+.An Jordan Hubbard Aq Mt jkh@FreeBSD.org ,
+but only as a development tool.
+It was never installed as part of any release.
+It's had occasional enhancements since then.
+.Pp
+.Nm
+was independently imported into Linux in 2001 by user
+.An robbiew ,
+and has occasionally merged in features from the
+.Fx
+version.
+.Pp
+A tool by the same name was included in DEC Unix 4.0, but I don't think it
+shared any code.
+.Pp
+This version is a full rewrite in Rust, by
+.An Alan Somers Aq Mt asomers@FreeBSD.org .

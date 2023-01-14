@@ -3,10 +3,13 @@ use std::{
     ffi::OsStr,
     fmt,
     fs::{File, OpenOptions},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Seek, SeekFrom, Write},
     mem,
     num::NonZeroU64,
-    os::unix::io::{AsRawFd, IntoRawFd},
+    os::unix::{
+        fs::FileExt,
+        io::{AsRawFd, IntoRawFd},
+    },
     path::PathBuf,
     process,
 };
@@ -414,8 +417,7 @@ impl Exerciser {
     }
 
     fn doread(&mut self, buf: &mut [u8], offset: u64, size: usize) {
-        self.file.seek(SeekFrom::Start(offset)).unwrap();
-        let read = self.file.read(buf).unwrap();
+        let read = self.file.read_at(buf, offset).unwrap();
         if read < size {
             error!("short read: {:#x} bytes instead of {:#x}", read, size);
             self.fail();
@@ -473,8 +475,7 @@ impl Exerciser {
 
     fn dowrite(&mut self, _cur_file_size: u64, size: usize, offset: u64) {
         let buf = &self.good_buf[offset as usize..offset as usize + size];
-        self.file.seek(SeekFrom::Start(offset)).unwrap();
-        let written = self.file.write(buf).unwrap();
+        let written = self.file.write_at(buf, offset).unwrap();
         if written != size {
             error!("short write: {:#x} bytes instead of {:#x}", written, size);
             self.fail();
@@ -932,10 +933,9 @@ impl Exerciser {
     }
 
     fn writefileimage(&mut self) {
-        self.file.seek(SeekFrom::Start(0)).unwrap();
         let written = self
             .file
-            .write(&self.good_buf[..self.file_size as usize])
+            .write_at(&self.good_buf[..self.file_size as usize], 0)
             .unwrap();
         if written as u64 != self.file_size {
             error!(

@@ -763,12 +763,20 @@ impl Exerciser {
         if self.skip() {
             return;
         }
+        let len = self.file_size as usize;
+        if len == 0 {
+            debug!(
+                "{:width$} skipping invalidate of zero-length file",
+                self.steps,
+                width = self.stepwidth
+            );
+            return;
+        }
         info!(
             "{:width$} msync(MS_INVALIDATE)",
             self.steps,
             width = self.stepwidth
         );
-        let len = self.file_size as usize;
         unsafe {
             let p = mmap(
                 None,

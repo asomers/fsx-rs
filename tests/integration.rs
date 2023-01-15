@@ -162,6 +162,15 @@ use tempfile::{NamedTempFile, TempDir};
 [INFO  fsx] 10 write    0x24538 .. 0x31d46 ( 0xd80f bytes)
 "
 )]
+// Equivalent to C's fsx -N 1 -i 1 -S 1
+// https://github.com/asomers/fsx-rs/issues/13
+#[case::mmap_underflow(
+    "-N 1 -S 1 -i 1",
+    "[INFO  fsx] Using seed 1
+[DEBUG fsx] 1 skipping zero size read
+[DEBUG fsx] 1 skipping invalidate of zero-length file
+"
+)]
 // Equivalent to C's fsx -N 10 -S 45 -r 4096
 // Exercises -r
 #[case(

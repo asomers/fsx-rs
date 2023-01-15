@@ -14,7 +14,7 @@ use tempfile::{NamedTempFile, TempDir};
 #[rstest]
 // Equivalent to C's fsx -N 10 -S 4 -o 65536 -O.  Includes both MapRead
 // and MapWrite.
-#[case(
+#[case::sixtyfourk_ops(
     "-O -N10 -S 4",
     "[INFO  fsx] Using seed 4
 [INFO  fsx]  1 write    0x35b79 .. 0x3ffff ( 0xa487 bytes)
@@ -31,7 +31,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 10 -S 4 -o 65536 -O -RW.  Disables mmapped read and
 // write.
-#[case(
+#[case::no_mmap(
     "-O -N10 -RW -S 4",
     "[INFO  fsx] Using seed 4
 [DEBUG fsx]  1 skipping zero size read
@@ -48,7 +48,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 10 -d -S 6 -o 65536 -O.  Includes both truncate
 // down and truncate up.
-#[case(
+#[case::truncate(
     "-O -N10 -S 6",
     "[INFO  fsx] Using seed 6
 [INFO  fsx]  1 write     0xb97f .. 0x1b97e (0x10000 bytes)
@@ -64,7 +64,7 @@ use tempfile::{NamedTempFile, TempDir};
 "
 )]
 // Equivalent to C's fsx -b 100 -N 110 -S 4 -o 65536 -O. Uses "-b"
-#[case(
+#[case::opnum(
     "-O -N 110 -b 100 -S 4",
     "[INFO  fsx] Using seed 4
 [INFO  fsx] 100 mapwrite   0x6a1 .. 0x106a0 (0x10000 bytes)
@@ -82,7 +82,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 2 -S 13 -o 65536 -O -c 2
 // Exercises closeopen
-#[case(
+#[case::closeopen(
     "-O -N 2 -S 13 -c 2",
     "[INFO  fsx] Using seed 13
 [INFO  fsx] 1 mapwrite  0x1781 .. 0x11780 (0x10000 bytes)
@@ -93,7 +93,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 2 -S 20
 // Uses random oplen
-#[case(
+#[case::baseline(
     "-N10 -S 20",
     "[INFO  fsx] Using seed 20
 [DEBUG fsx]  1 skipping zero size read
@@ -110,7 +110,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 10 -S 30 -o 4096
 // Exercises -o
-#[case(
+#[case::oplen(
     "-N 10 -S 30 -o 4096",
     "[INFO  fsx] Using seed 30
 [INFO  fsx]  1 write     0x7f70 ..  0x8ed0 ( 0xf61 bytes)
@@ -127,7 +127,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 10 -S 40 -l 1048576
 // Exercises -l
-#[case(
+#[case::flen(
     "-N 10 -S 40 -l 1048576",
     "[INFO  fsx] Using seed 40
 [DEBUG fsx]  1 skipping zero size read
@@ -144,7 +144,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 10 -S 42 -N 10 -i 2
 // Exercises -i
-#[case(
+#[case::inval(
     "-N 10 -S 42 -i 2",
     "[INFO  fsx] Using seed 42
 [INFO  fsx]  1 write    0x32c3c .. 0x3d016 ( 0xa3db bytes)
@@ -173,7 +173,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 10 -S 45 -r 4096
 // Exercises -r
-#[case(
+#[case::readbdy(
     "-N 10 -S 45 -r 4096",
     "[INFO  fsx] Using seed 45
 [DEBUG fsx]  1 skipping zero size read
@@ -190,7 +190,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 10 -S 46 -w 4096
 // Exercises -w
-#[case(
+#[case::writebdy(
     "-N 10 -S 46 -w 4096",
     "[INFO  fsx] Using seed 46
 [INFO  fsx]  1 write    0x36000 .. 0x3d360 ( 0x7361 bytes)
@@ -207,7 +207,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 4 -t 4096 -S 51
 // Exercises -t
-#[case(
+#[case::truncbdy(
     "-N 4 -S 51 -t 4096",
     "[INFO  fsx] Using seed 51
 [INFO  fsx] 1 truncate     0x0 => 0x16000
@@ -218,7 +218,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -N 10 -S 60 -m 32768:65536
 // Exercises -m
-#[case(
+#[case::monitor(
     "-N 10 -S 60 -m 32768:65536",
     "[INFO  fsx] Using seed 60
 [WARN  fsx]  1 truncate     0x0 =>  0x6f44
@@ -235,7 +235,7 @@ use tempfile::{NamedTempFile, TempDir};
 )]
 // Equivalent to C's fsx -S 72 -L -N 10
 // Exercises -B
-#[case(
+#[case::blockmode(
     "-B -S 72 -N 10 -P /tmp",
     "[INFO  fsx] Using seed 72
 [INFO  fsx]  1 mapread   0x7a51 ..  0xeef7 ( 0x74a7 bytes)

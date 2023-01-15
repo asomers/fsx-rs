@@ -17,6 +17,7 @@ libc = "0.2.139"
 log = "0.4.17"
 nix = { version = "0.26.0", default-features = false, features = [ "feature", "mman" ]}
 rand = { version = "0.8.5" }
+rand_xorshift = "0.3"
 ringbuffer = "0.11.0"
 safemem = "0.3.0"
 

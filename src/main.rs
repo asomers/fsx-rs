@@ -35,10 +35,8 @@ use rand::{
     RngCore,
     SeedableRng,
 };
+use rand_xorshift::XorShiftRng;
 use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
-
-mod prng;
-use prng::OsPRng;
 
 /// Calculate the maximum field width needed to print numbers up to this size
 fn field_width(max: usize, hex: bool) -> usize {
@@ -155,7 +153,7 @@ struct Cli {
 
     /// Seed for RNG
     #[arg(short = 'S')]
-    seed: Option<u32>,
+    seed: Option<u64>,
 
     /// Disable mmap writes
     #[arg(short = 'W')]
@@ -273,8 +271,8 @@ struct Exerciser {
     stepwidth:         usize,
     // File's original data
     original_buf:      Vec<u8>,
-    // Use OsPRng for full backwards-compatibility with the C fsx
-    rng:               OsPRng,
+    // Use XorShiftRng because it's deterministic and seedable
+    rng:               XorShiftRng,
     // Number of steps completed so far
     steps:             u64,
     file:              File,
@@ -962,8 +960,7 @@ impl From<Cli> for Exerciser {
     fn from(cli: Cli) -> Self {
         let seed = cli.seed.unwrap_or_else(|| {
             let mut seeder = thread_rng();
-            // The legacy FSX only uses 31-bit seeds.
-            seeder.gen::<u32>() & 0x7FFFFFFF
+            seeder.gen::<u64>()
         });
         info!("Using seed {}", seed);
         let mut oo = OpenOptions::new();
@@ -988,7 +985,7 @@ impl From<Cli> for Exerciser {
             // Zero existing file
             file.write_all(&good_buf).unwrap();
         }
-        let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
+        let mut rng = XorShiftRng::seed_from_u64(seed);
         rng.fill_bytes(&mut original_buf[..]);
         let fwidth = field_width(flen as usize, true);
         let swidth = field_width(cli.oplen, true);

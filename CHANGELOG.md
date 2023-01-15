@@ -1,0 +1,12 @@
+# Change Log
+
+All notable changes to this project will be documented in this file.
+This project adheres to [Semantic Versioning](https://semver.org/).
+
+## [Unreleased] - ReleaseDate
+### Added
+### Changed
+### Fixed
+
+- Fixed a `TryFromIntError` crash when using `-i` with high probabilities.
+  ([#14](https://github.com/asomers/fsx-rs/pull/14))

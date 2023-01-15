@@ -197,10 +197,9 @@ impl fmt::Display for Op {
     }
 }
 
-impl From<u32> for Op {
-    fn from(rv: u32) -> Self {
-        let x = rv % 5;
-        match x {
+impl Distribution<Op> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
+        match rng.gen_range(0..=4) {
             0 => Op::Read,
             1 => Op::Write,
             2 => Op::MapRead,
@@ -208,14 +207,6 @@ impl From<u32> for Op {
             4 => Op::MapWrite,
             _ => unreachable!(),
         }
-    }
-}
-
-impl Distribution<Op> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
-        // Manually handle the modulo division, rather than using
-        // RngCore::gen_range, for compatibility with the C-based FSX
-        Op::from(rng.next_u32())
     }
 }
 
@@ -237,8 +228,8 @@ enum LogEntry {
 struct Exerciser {
     artifacts_dir:     Option<PathBuf>,
     blockmode:         bool,
-    /// 1 in P chance of close+open at each op
-    closeprob:         Option<u32>,
+    /// Chance of close+open at each op
+    closeprob:         f32,
     /// Current file size
     file_size:         u64,
     flen:              u64,
@@ -247,8 +238,8 @@ struct Exerciser {
     fwidth:            usize,
     /// Inject an error on this step
     inject:            Option<u64>,
-    /// 1 in P chance of MS_INVALIDATE at each op
-    invalprob:         Option<u32>,
+    /// Chance of MS_INVALIDATE at each op
+    invalprob:         f32,
     // What the file ought to contain
     good_buf:          Vec<u8>,
     maxoplen:          usize,
@@ -814,15 +805,7 @@ impl Exerciser {
     }
 
     fn step(&mut self) {
-        // It would be more natural to generate op and closeopen independently.
-        // But do it this way for backwards compatibility with C.
-        let rv: u32 = self.rng.gen();
-        // Sigh.  Yes, this is how C does it.
-        let mut op = Op::from(
-            rv % (3
-                + (if self.blockmode { 0 } else { 1 })
-                + if self.nomapwrite { 0 } else { 1 }),
-        );
+        let mut op = self.rng.gen();
         if self.blockmode && op == Op::Truncate {
             op = Op::MapWrite;
         }
@@ -832,16 +815,8 @@ impl Exerciser {
         }
         self.steps += 1;
 
-        let closeopen = if let Some(x) = self.closeprob {
-            (rv >> 3) < (1 << 28) / x
-        } else {
-            false
-        };
-        let invl = if let Some(x) = self.invalprob {
-            (rv >> 3) < (1 << 28) / x
-        } else {
-            false
-        };
+        let closeopen = self.rng.gen_range(0.0..1.0) < self.closeprob;
+        let invl = self.rng.gen_range(0.0..1.0) < self.invalprob;
 
         if op == Op::Write || op == Op::MapWrite {
             let mut size = if self.norandomoplen {
@@ -996,7 +971,7 @@ impl From<Cli> for Exerciser {
         Exerciser {
             artifacts_dir: cli.artifacts_dir,
             blockmode: cli.blockmode,
-            closeprob: cli.closeprob,
+            closeprob: cli.closeprob.map(|p| 1.0 / p as f32).unwrap_or(0.0),
             file,
             file_size,
             flen,
@@ -1004,7 +979,7 @@ impl From<Cli> for Exerciser {
             fname: cli.fname,
             good_buf,
             inject: cli.inject,
-            invalprob: cli.invalprob,
+            invalprob: cli.invalprob.map(|p| 1.0 / p as f32).unwrap_or(0.0),
             maxoplen: cli.oplen,
             monitor: cli.monitor,
             nomapread: cli.nomapread,

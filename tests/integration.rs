@@ -13,17 +13,17 @@ use tempfile::{NamedTempFile, TempDir};
 // and MapWrite.
 #[case::sixtyfourk_ops(
     "-O -N10 -S 4",
-    "[INFO  fsx] Using seed 4
-[INFO  fsx]  1 truncate     0x0 => 0x3cbf8
-[INFO  fsx]  2 mapwrite 0x30c3e .. 0x3ffff ( 0xf3c2 bytes)
-[INFO  fsx]  3 read      0xa364 .. 0x1a363 (0x10000 bytes)
-[INFO  fsx]  4 read     0x2d8b5 .. 0x3d8b4 (0x10000 bytes)
-[INFO  fsx]  5 mapwrite 0x2d2c7 .. 0x3d2c6 (0x10000 bytes)
-[INFO  fsx]  6 read     0x1fad5 .. 0x2fad4 (0x10000 bytes)
-[INFO  fsx]  7 mapwrite 0x3e479 .. 0x3ffff ( 0x1b87 bytes)
-[INFO  fsx]  8 mapwrite 0x3c227 .. 0x3ffff ( 0x3dd9 bytes)
-[INFO  fsx]  9 mapread   0x8fc9 .. 0x18fc8 (0x10000 bytes)
-[INFO  fsx] 10 truncate 0x40000 =>  0x938c
+"[INFO  fsx] Using seed 4
+[DEBUG fsx]  1 skipping zero size read
+[INFO  fsx]  2 mapwrite 0x2d2c7 .. 0x3d2c6 (0x10000 bytes)
+[INFO  fsx]  3 write    0x3e479 .. 0x3ffff ( 0x1b87 bytes)
+[INFO  fsx]  4 mapwrite  0x8fc9 .. 0x18fc8 (0x10000 bytes)
+[INFO  fsx]  5 write    0x27059 .. 0x37058 (0x10000 bytes)
+[INFO  fsx]  6 truncate 0x40000 => 0x14ae8
+[INFO  fsx]  7 write     0xed7f .. 0x1ed7e (0x10000 bytes)
+[INFO  fsx]  8 mapwrite 0x24c9f .. 0x34c9e (0x10000 bytes)
+[INFO  fsx]  9 mapread   0xf8c9 .. 0x1f8c8 (0x10000 bytes)
+[INFO  fsx] 10 write    0x2e562 .. 0x3e561 (0x10000 bytes)
 "
 )]
 // Equivalent to C's fsx -N 10 -S 4 -o 65536 -O -RW.  Disables mmapped read and
@@ -32,49 +32,50 @@ use tempfile::{NamedTempFile, TempDir};
     "-O -N10 -RW -S 4",
     "[INFO  fsx] Using seed 4
 [DEBUG fsx]  1 skipping zero size read
-[DEBUG fsx]  2 skipping zero size read
-[INFO  fsx]  3 truncate     0x0 =>  0xa364
-[INFO  fsx]  4 write    0x2d8b5 .. 0x3d8b4 (0x10000 bytes)
-[INFO  fsx]  5 truncate 0x3d8b5 => 0x2d2c7
-[INFO  fsx]  6 read      0x274e .. 0x1274d (0x10000 bytes)
-[INFO  fsx]  7 read     0x181d8 .. 0x281d7 (0x10000 bytes)
-[INFO  fsx]  8 truncate 0x2d2c7 => 0x3c227
-[INFO  fsx]  9 read     0x27c93 .. 0x37c92 (0x10000 bytes)
-[INFO  fsx] 10 read     0x194d5 .. 0x294d4 (0x10000 bytes)
+[INFO  fsx]  2 write    0x2d2c7 .. 0x3d2c6 (0x10000 bytes)
+[INFO  fsx]  3 write    0x3e479 .. 0x3ffff ( 0x1b87 bytes)
+[INFO  fsx]  4 write     0x8fc9 .. 0x18fc8 (0x10000 bytes)
+[INFO  fsx]  5 write    0x27059 .. 0x37058 (0x10000 bytes)
+[INFO  fsx]  6 truncate 0x40000 => 0x14ae8
+[INFO  fsx]  7 write     0xed7f .. 0x1ed7e (0x10000 bytes)
+[INFO  fsx]  8 write    0x24c9f .. 0x34c9e (0x10000 bytes)
+[INFO  fsx]  9 read      0xf8c9 .. 0x1f8c8 (0x10000 bytes)
+[INFO  fsx] 10 write    0x2e562 .. 0x3e561 (0x10000 bytes)
 "
 )]
-// Equivalent to C's fsx -N 10 -d -S 6 -o 65536 -O.  Includes both truncate
+// Equivalent to C's fsx -N 10 -d -S 8 -o 65536 -O.  Includes both truncate
 // down and truncate up.
 #[case::truncate(
-    "-O -N10 -S 6",
-    "[INFO  fsx] Using seed 6
-[INFO  fsx]  1 truncate     0x0 =>  0xb574
-[INFO  fsx]  2 mapwrite 0x2e2ff .. 0x3e2fe (0x10000 bytes)
-[INFO  fsx]  3 truncate 0x3e2ff => 0x1ede4
-[INFO  fsx]  4 mapread   0x2054 .. 0x12053 (0x10000 bytes)
-[INFO  fsx]  5 write    0x1baea .. 0x2bae9 (0x10000 bytes)
-[INFO  fsx]  6 mapwrite 0x2d78e .. 0x3d78d (0x10000 bytes)
-[INFO  fsx]  7 write     0x67c2 .. 0x167c1 (0x10000 bytes)
-[INFO  fsx]  8 write    0x175c2 .. 0x275c1 (0x10000 bytes)
-[INFO  fsx]  9 mapread   0x783e .. 0x1783d (0x10000 bytes)
-[INFO  fsx] 10 write    0x2a14c .. 0x3a14b (0x10000 bytes)
+    "-O -N10 -S 8",
+    "[INFO  fsx] Using seed 8
+[DEBUG fsx]  1 skipping zero size read
+[INFO  fsx]  2 truncate     0x0 =>  0x98e5
+[INFO  fsx]  3 mapwrite 0x1458d .. 0x2458c (0x10000 bytes)
+[INFO  fsx]  4 write    0x359cf .. 0x3ffff ( 0xa631 bytes)
+[INFO  fsx]  5 mapread  0x2cffd .. 0x3cffc (0x10000 bytes)
+[INFO  fsx]  6 truncate 0x40000 => 0x180a9
+[INFO  fsx]  7 truncate 0x180a9 => 0x2c830
+[INFO  fsx]  8 write    0x286a1 .. 0x386a0 (0x10000 bytes)
+[INFO  fsx]  9 write     0x8db2 .. 0x18db1 (0x10000 bytes)
+[INFO  fsx] 10 truncate 0x386a1 =>  0x4082
 "
 )]
 // Equivalent to C's fsx -b 100 -N 110 -S 4 -o 65536 -O. Uses "-b"
 #[case::opnum(
     "-O -N 110 -b 100 -S 4",
     "[INFO  fsx] Using seed 4
-[INFO  fsx] 100 truncate 0x352f6 => 0x3397b
-[INFO  fsx] 101 mapread  0x32365 .. 0x3397a ( 0x1616 bytes)
-[INFO  fsx] 102 mapread  0x25174 .. 0x3397a ( 0xe807 bytes)
-[INFO  fsx] 103 write    0x22d05 .. 0x32d04 (0x10000 bytes)
-[INFO  fsx] 104 mapwrite 0x1c5a7 .. 0x2c5a6 (0x10000 bytes)
-[INFO  fsx] 105 read     0x255da .. 0x3397a ( 0xe3a1 bytes)
-[INFO  fsx] 106 mapread   0x9c1f .. 0x19c1e (0x10000 bytes)
-[INFO  fsx] 107 truncate 0x3397b =>  0xe9a3
-[INFO  fsx] 108 read      0xb9f3 ..  0xe9a2 ( 0x2fb0 bytes)
-[INFO  fsx] 109 mapwrite 0x130ff .. 0x230fe (0x10000 bytes)
-[INFO  fsx] 110 read     0x1929a .. 0x230fe ( 0x9e65 bytes)
+[DEBUG fsx]   1 skipping zero size read
+[INFO  fsx] 100 read     0x13b7e .. 0x23b7d (0x10000 bytes)
+[INFO  fsx] 101 mapwrite 0x1c1b0 .. 0x2c1af (0x10000 bytes)
+[INFO  fsx] 102 mapwrite 0x2526a .. 0x35269 (0x10000 bytes)
+[INFO  fsx] 103 write    0x22490 .. 0x3248f (0x10000 bytes)
+[INFO  fsx] 104 mapread   0x7d30 .. 0x17d2f (0x10000 bytes)
+[INFO  fsx] 105 write     0x4364 .. 0x14363 (0x10000 bytes)
+[INFO  fsx] 106 mapwrite 0x10b74 .. 0x20b73 (0x10000 bytes)
+[INFO  fsx] 107 mapwrite  0xa7af .. 0x1a7ae (0x10000 bytes)
+[INFO  fsx] 108 write    0x3ec61 .. 0x3ffff ( 0x139f bytes)
+[INFO  fsx] 109 truncate 0x40000 => 0x10227
+[INFO  fsx] 110 mapwrite 0x37d30 .. 0x3ffff ( 0x82d0 bytes)
 "
 )]
 // Equivalent to C's fsx -N 2 -S 13 -o 65536 -O -c 2
@@ -82,9 +83,10 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::closeopen(
     "-O -N 2 -S 13 -c 2",
     "[INFO  fsx] Using seed 13
-[INFO  fsx] 1 write    0x271a0 .. 0x3719f (0x10000 bytes)
+[DEBUG fsx] 1 skipping zero size read
 [INFO  fsx] 1 close/open
-[INFO  fsx] 2 truncate 0x371a0 =>  0x7541
+[INFO  fsx] 2 truncate     0x0 => 0x2d851
+[INFO  fsx] 2 close/open
 "
 )]
 // Equivalent to C's fsx -N 2 -S 20
@@ -93,15 +95,15 @@ use tempfile::{NamedTempFile, TempDir};
     "-N10 -S 20",
     "[INFO  fsx] Using seed 20
 [DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 truncate     0x0 =>  0x4d6f
-[INFO  fsx]  3 mapwrite 0x2bcac .. 0x33220 ( 0x7575 bytes)
-[INFO  fsx]  4 truncate 0x33221 => 0x2d073
-[INFO  fsx]  5 truncate 0x2d073 => 0x152f2
-[INFO  fsx]  6 mapwrite 0x156b0 .. 0x17b33 ( 0x2484 bytes)
-[INFO  fsx]  7 write    0x1814f .. 0x243a6 ( 0xc258 bytes)
-[INFO  fsx]  8 read     0x21e66 .. 0x243a6 ( 0x2541 bytes)
-[INFO  fsx]  9 mapwrite  0xe0b7 ..  0xe2a2 (  0x1ec bytes)
-[INFO  fsx] 10 read     0x1d288 .. 0x23b30 ( 0x68a9 bytes)
+[DEBUG fsx]  2 skipping zero size read
+[INFO  fsx]  3 truncate     0x0 => 0x17e11
+[INFO  fsx]  4 read      0xee64 .. 0x17e10 ( 0x8fad bytes)
+[INFO  fsx]  5 write    0x2807b .. 0x2950b ( 0x1491 bytes)
+[INFO  fsx]  6 read      0x6d83 .. 0x14c4d ( 0xdecb bytes)
+[INFO  fsx]  7 read     0x1fc24 .. 0x280e9 ( 0x84c6 bytes)
+[INFO  fsx]  8 read     0x232fb .. 0x2950b ( 0x6211 bytes)
+[INFO  fsx]  9 mapwrite  0xfee2 .. 0x17999 ( 0x7ab8 bytes)
+[INFO  fsx] 10 mapread   0xdaa5 .. 0x1b222 ( 0xd77e bytes)
 "
 )]
 // Equivalent to C's fsx -N 10 -S 20 -U
@@ -126,16 +128,16 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::oplen(
     "-N 10 -S 30 -o 4096",
     "[INFO  fsx] Using seed 30
-[INFO  fsx]  1 mapwrite  0x1473 ..  0x2119 ( 0xca7 bytes)
-[INFO  fsx]  2 mapread   0x1a31 ..  0x1b6f ( 0x13f bytes)
-[INFO  fsx]  3 truncate  0x211a => 0x2e8c2
-[INFO  fsx]  4 mapwrite 0x1cb4a .. 0x1d774 ( 0xc2b bytes)
-[INFO  fsx]  5 mapread  0x2c35d .. 0x2d351 ( 0xff5 bytes)
-[INFO  fsx]  6 read     0x12925 .. 0x137f6 ( 0xed2 bytes)
-[INFO  fsx]  7 mapwrite  0x968c ..  0xa469 ( 0xdde bytes)
-[INFO  fsx]  8 truncate 0x2e8c2 =>  0xadb5
-[INFO  fsx]  9 mapread   0x4afb ..  0x5835 ( 0xd3b bytes)
-[INFO  fsx] 10 truncate  0xadb5 => 0x30b73
+[INFO  fsx]  1 mapwrite 0x11ccb .. 0x12aae ( 0xde4 bytes)
+[INFO  fsx]  2 mapread   0x9e0c ..  0xaacd ( 0xcc2 bytes)
+[INFO  fsx]  3 mapread   0xdfa5 ..  0xee76 ( 0xed2 bytes)
+[INFO  fsx]  4 truncate 0x12aaf => 0x371b7
+[INFO  fsx]  5 mapread  0x11f1d .. 0x12016 (  0xfa bytes)
+[INFO  fsx]  6 mapwrite 0x29dff .. 0x2ac32 ( 0xe34 bytes)
+[INFO  fsx]  7 truncate 0x371b7 => 0x2467f
+[INFO  fsx]  8 truncate 0x2467f =>  0xfbef
+[INFO  fsx]  9 mapwrite 0x144e6 .. 0x1471a ( 0x235 bytes)
+[INFO  fsx] 10 write     0xddf0 ..  0xecca ( 0xedb bytes)
 "
 )]
 // Equivalent to C's fsx -N 10 -S 40 -l 1048576
@@ -144,15 +146,15 @@ use tempfile::{NamedTempFile, TempDir};
     "-N 10 -S 56 -l 1048576",
     "[INFO  fsx] Using seed 56
 [DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 write     0xdf810 ..  0xe191b ( 0x210c bytes)
-[INFO  fsx]  3 truncate  0xe191c =>  0x93db7
-[INFO  fsx]  4 truncate  0x93db7 =>  0x28813
-[INFO  fsx]  5 write     0x2f984 ..  0x30463 (  0xae0 bytes)
-[INFO  fsx]  6 read      0x2b74e ..  0x30463 ( 0x4d16 bytes)
-[INFO  fsx]  7 truncate  0x30464 =>  0x3ad48
-[INFO  fsx]  8 mapwrite  0xff116 ..  0xfffff (  0xeea bytes)
-[INFO  fsx]  9 truncate 0x100000 =>  0x72f45
-[INFO  fsx] 10 mapwrite  0x9a519 ..  0xa2c56 ( 0x873e bytes)
+[INFO  fsx]  2 mapwrite  0x3bbed ..  0x4a6be ( 0xead2 bytes)
+[INFO  fsx]  3 mapread   0x22790 ..  0x2c447 ( 0x9cb8 bytes)
+[INFO  fsx]  4 mapwrite  0xff116 ..  0xfffff (  0xeea bytes)
+[INFO  fsx]  5 write     0x9a519 ..  0xa2c56 ( 0x873e bytes)
+[INFO  fsx]  6 write     0x4f14b ..  0x5b085 ( 0xbf3b bytes)
+[INFO  fsx]  7 read      0xdba6d ..  0xe309d ( 0x7631 bytes)
+[INFO  fsx]  8 truncate 0x100000 =>  0xb312d
+[INFO  fsx]  9 write     0xb0d6d ..  0xbacf7 ( 0x9f8b bytes)
+[INFO  fsx] 10 write     0x40c70 ..  0x44527 ( 0x38b8 bytes)
 "
 )]
 // Equivalent to C's fsx -N 10 -S 42 -N 10 -i 2
@@ -160,44 +162,47 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::inval(
     "-N 10 -S 42 -i 2",
     "[INFO  fsx] Using seed 42
-[INFO  fsx]  1 truncate     0x0 => 0x34d0d
-[INFO  fsx]  2 mapwrite 0x340d8 .. 0x381ce ( 0x40f7 bytes)
-[INFO  fsx]  3 write    0x218ba .. 0x29715 ( 0x7e5c bytes)
-[INFO  fsx]  4 truncate 0x381cf => 0x16407
-[INFO  fsx]  5 mapread   0xb94e ..  0xe951 ( 0x3004 bytes)
-[INFO  fsx]  6 mapwrite  0xd816 .. 0x1793a ( 0xa125 bytes)
-[INFO  fsx]  7 read      0x8321 ..  0xdb30 ( 0x5810 bytes)
-[INFO  fsx]  8 read      0xd0da .. 0x11a18 ( 0x493f bytes)
-[INFO  fsx]  9 mapread  0x12f21 .. 0x1793a ( 0x4a1a bytes)
+[INFO  fsx]  1 write    0x218ba .. 0x29715 ( 0x7e5c bytes)
+[INFO  fsx]  1 msync(MS_INVALIDATE)
+[INFO  fsx]  2 mapwrite  0xd816 .. 0x1793a ( 0xa125 bytes)
+[INFO  fsx]  3 truncate 0x29716 => 0x1946c
+[INFO  fsx]  3 msync(MS_INVALIDATE)
+[INFO  fsx]  4 mapread  0x14eb4 .. 0x1946b ( 0x45b8 bytes)
+[INFO  fsx]  4 msync(MS_INVALIDATE)
+[INFO  fsx]  5 mapwrite 0x2e4c0 .. 0x2f4e4 ( 0x1025 bytes)
+[INFO  fsx]  5 msync(MS_INVALIDATE)
+[INFO  fsx]  6 read     0x21d3a .. 0x2d148 ( 0xb40f bytes)
+[INFO  fsx]  7 mapwrite 0x38cf5 .. 0x3f69d ( 0x69a9 bytes)
+[INFO  fsx]  8 write    0x131dc .. 0x1710d ( 0x3f32 bytes)
+[INFO  fsx]  9 read     0x300bd .. 0x3b947 ( 0xb88b bytes)
 [INFO  fsx]  9 msync(MS_INVALIDATE)
-[INFO  fsx] 10 mapread   0x26b5 ..  0x2e29 (  0x775 bytes)
+[INFO  fsx] 10 mapwrite 0x19182 .. 0x2868b ( 0xf50a bytes)
 "
 )]
-// Equivalent to C's fsx -N 2 -i 1 -S 11
+// Equivalent to C's fsx -N 1 -i 1 -S 10
 // https://github.com/asomers/fsx-rs/issues/13
 #[case::mmap_underflow(
-    "-N 2 -S 11 -i 1",
-    "[INFO  fsx] Using seed 11
+    "-N 1 -S 10 -i 1",
+    "[INFO  fsx] Using seed 10
 [DEBUG fsx] 1 skipping zero size read
-[DEBUG fsx] 2 skipping zero size read
-[DEBUG fsx] 2 skipping invalidate of zero-length file
+[DEBUG fsx] 1 skipping invalidate of zero-length file
 "
 )]
-// Equivalent to C's fsx -N 10 -S 45 -r 4096
+// Equivalent to C's fsx -N 10 -S 46 -r 4096
 // Exercises -r
 #[case::readbdy(
-    "-N 10 -S 45 -r 4096",
-    "[INFO  fsx] Using seed 45
-[DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 mapwrite 0x3e972 .. 0x3ffff ( 0x168e bytes)
-[INFO  fsx]  3 truncate 0x40000 => 0x2e370
-[INFO  fsx]  4 write    0x12edc .. 0x1975d ( 0x6882 bytes)
-[INFO  fsx]  5 read     0x17000 .. 0x23ea2 ( 0xcea3 bytes)
-[INFO  fsx]  6 read      0x2000 ..  0xc729 ( 0xa72a bytes)
-[INFO  fsx]  7 read     0x11000 .. 0x1de97 ( 0xce98 bytes)
-[INFO  fsx]  8 mapwrite 0x3e69a .. 0x3ffff ( 0x1966 bytes)
-[INFO  fsx]  9 write    0x3ab1d .. 0x3d337 ( 0x281b bytes)
-[INFO  fsx] 10 truncate 0x40000 => 0x10d5d
+    "-N 10 -S 46 -r 4096",
+    "[INFO  fsx] Using seed 46
+[INFO  fsx]  1 truncate     0x0 =>  0xb8fa
+[INFO  fsx]  2 mapread   0xb000 ..  0xb16c (  0x16d bytes)
+[INFO  fsx]  3 write    0x1edb2 .. 0x1f7d5 (  0xa24 bytes)
+[INFO  fsx]  4 mapread  0x1a000 .. 0x1eeda ( 0x4edb bytes)
+[INFO  fsx]  5 mapwrite 0x2ba50 .. 0x361fe ( 0xa7af bytes)
+[INFO  fsx]  6 read     0x12000 .. 0x1bcb2 ( 0x9cb3 bytes)
+[INFO  fsx]  7 mapread  0x34000 .. 0x358a5 ( 0x18a6 bytes)
+[INFO  fsx]  8 mapwrite 0x3128a .. 0x38fd9 ( 0x7d50 bytes)
+[INFO  fsx]  9 truncate 0x38fda =>  0x5ce7
+[INFO  fsx] 10 mapread   0x2000 ..  0x366f ( 0x1670 bytes)
 "
 )]
 // Equivalent to C's fsx -N 10 -S 46 -w 4096
@@ -205,44 +210,44 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::writebdy(
     "-N 10 -S 46 -w 4096",
     "[INFO  fsx] Using seed 46
-[INFO  fsx]  1 write    0x36000 .. 0x3f099 ( 0x909a bytes)
-[INFO  fsx]  2 truncate 0x3f09a => 0x34b8b
-[INFO  fsx]  3 mapread  0x2f0af .. 0x3160d ( 0x255f bytes)
-[INFO  fsx]  4 truncate 0x34b8b => 0x3f064
-[INFO  fsx]  5 write    0x26000 .. 0x2ca25 ( 0x6a26 bytes)
-[INFO  fsx]  6 mapread  0x15644 .. 0x19e30 ( 0x47ed bytes)
-[INFO  fsx]  7 read     0x1beaa .. 0x20da5 ( 0x4efc bytes)
-[INFO  fsx]  8 write    0x35000 .. 0x3f1d3 ( 0xa1d4 bytes)
-[INFO  fsx]  9 mapwrite 0x2b000 .. 0x357ae ( 0xa7af bytes)
-[INFO  fsx] 10 truncate 0x3f1d4 =>  0xdd2f
+[INFO  fsx]  1 truncate     0x0 =>  0xb8fa
+[INFO  fsx]  2 mapread   0xb78d ..  0xb8f9 (  0x16d bytes)
+[INFO  fsx]  3 write    0x1e000 .. 0x1ea23 (  0xa24 bytes)
+[INFO  fsx]  4 mapread  0x1c25b .. 0x1ea23 ( 0x27c9 bytes)
+[INFO  fsx]  5 mapwrite 0x2b000 .. 0x357ae ( 0xa7af bytes)
+[INFO  fsx]  6 read      0xb938 .. 0x155ea ( 0x9cb3 bytes)
+[INFO  fsx]  7 mapread  0x1eefb .. 0x241c3 ( 0x52c9 bytes)
+[INFO  fsx]  8 mapwrite 0x31000 .. 0x38d4f ( 0x7d50 bytes)
+[INFO  fsx]  9 truncate 0x38d50 =>  0x5ce7
+[INFO  fsx] 10 mapread   0x2a16 ..  0x4085 ( 0x1670 bytes)
 "
 )]
-// Equivalent to C's fsx -N 4 -t 4096 -S 51
+// Equivalent to C's fsx -N 4 -t 4096 -S 53
 // Exercises -t
 #[case::truncbdy(
-    "-N 4 -S 52 -t 4096",
-    "[INFO  fsx] Using seed 52
-[INFO  fsx] 1 truncate     0x0 => 0x16000
-[INFO  fsx] 2 mapwrite 0x343fd .. 0x3d93f ( 0x9543 bytes)
-[INFO  fsx] 3 truncate 0x3d940 => 0x23000
-[INFO  fsx] 4 read     0x19850 .. 0x22fff ( 0x97b0 bytes)
+    "-N 4 -S 53 -t 4096",
+    "[INFO  fsx] Using seed 53
+[INFO  fsx] 1 truncate     0x0 => 0x3e000
+[INFO  fsx] 2 truncate 0x3e000 =>  0xa000
+[INFO  fsx] 3 mapread   0x9290 ..  0x9fff (  0xd70 bytes)
+[INFO  fsx] 4 write     0x9bb0 .. 0x12ed5 ( 0x9326 bytes)
 "
 )]
-// Equivalent to C's fsx -N 10 -S 60 -m 32768:65536
+// Equivalent to C's fsx -N 10 -S 68 -m 32768:65536
 // Exercises -m
 #[case::monitor(
-    "-N 10 -S 61 -m 32768:65536",
-    "[INFO  fsx] Using seed 61
-[DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 write    0x3e0c9 .. 0x3ffff ( 0x1f37 bytes)
-[INFO  fsx]  3 read     0x1001b .. 0x1e0b6 ( 0xe09c bytes)
-[WARN  fsx]  4 read      0x5e79 ..  0xe411 ( 0x8599 bytes)
-[INFO  fsx]  5 mapwrite 0x1a4a6 .. 0x29a5c ( 0xf5b7 bytes)
-[WARN  fsx]  6 mapwrite  0x7f07 ..  0xa49f ( 0x2599 bytes)
-[INFO  fsx]  7 mapwrite 0x3d331 .. 0x3ffff ( 0x2ccf bytes)
-[WARN  fsx]  8 write     0x3e8f ..  0xec39 ( 0xadab bytes)
-[INFO  fsx]  9 read     0x2124f .. 0x2efde ( 0xdd90 bytes)
-[INFO  fsx] 10 write    0x1425a .. 0x211d0 ( 0xcf77 bytes)
+    "-N 10 -S 68 -m 32768:65536",
+    "[INFO  fsx] Using seed 68
+[WARN  fsx]  1 truncate     0x0 =>  0x5366
+[INFO  fsx]  2 mapwrite 0x1d30c .. 0x21f07 ( 0x4bfc bytes)
+[INFO  fsx]  3 truncate 0x21f08 => 0x1594d
+[WARN  fsx]  4 read      0x20c5 ..  0xeff1 ( 0xcf2d bytes)
+[INFO  fsx]  5 read     0x14d41 .. 0x1594c (  0xc0c bytes)
+[INFO  fsx]  6 write    0x32422 .. 0x3ffff ( 0xdbde bytes)
+[INFO  fsx]  7 mapread  0x1d40b .. 0x22c3c ( 0x5832 bytes)
+[WARN  fsx]  8 write     0x7ddd .. 0x17366 ( 0xf58a bytes)
+[WARN  fsx]  9 mapwrite  0xa8cd ..  0xbd84 ( 0x14b8 bytes)
+[INFO  fsx] 10 truncate 0x40000 => 0x2a40d
 "
 )]
 // Equivalent to C's fsx -S 72 -L -N 10
@@ -250,16 +255,16 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::blockmode(
     "-B -S 72 -N 10 -P /tmp",
     "[INFO  fsx] Using seed 72
-[INFO  fsx]  1 read      0xd7e2b ..  0xdf129 ( 0x72ff bytes)
-[INFO  fsx]  2 read      0x68997 ..  0x697f6 (  0xe60 bytes)
-[INFO  fsx]  3 read      0xc0405 ..  0xcd716 ( 0xd312 bytes)
-[INFO  fsx]  4 mapread   0x19f63 ..  0x1b0cb ( 0x1169 bytes)
-[INFO  fsx]  5 mapread   0x162e4 ..  0x19055 ( 0x2d72 bytes)
-[INFO  fsx]  6 read      0xe8886 ..  0xee99a ( 0x6115 bytes)
-[INFO  fsx]  7 mapwrite  0x808bc ..  0x82901 ( 0x2046 bytes)
-[INFO  fsx]  8 write     0x5044a ..  0x5f467 ( 0xf01e bytes)
-[INFO  fsx]  9 mapread   0x84f30 ..  0x8678e ( 0x185f bytes)
-[INFO  fsx] 10 mapwrite  0x30237 ..  0x3df1b ( 0xdce5 bytes)
+[INFO  fsx]  1 mapwrite  0xbca1b ..  0xbf152 ( 0x2738 bytes)
+[INFO  fsx]  2 write     0xec146 ..  0xf7048 ( 0xaf03 bytes)
+[INFO  fsx]  3 read      0xe1fbf ..  0xe8b46 ( 0x6b88 bytes)
+[INFO  fsx]  4 mapwrite  0x5044a ..  0x5f467 ( 0xf01e bytes)
+[INFO  fsx]  5 read      0x9e6be ..  0xaa93e ( 0xc281 bytes)
+[INFO  fsx]  6 mapread   0x837ab ..  0x89af3 ( 0x6349 bytes)
+[INFO  fsx]  7 mapwrite  0x4bdd9 ..  0x5997c ( 0xdba4 bytes)
+[INFO  fsx]  8 mapwrite  0x6e962 ..  0x74089 ( 0x5728 bytes)
+[INFO  fsx]  9 mapread   0x2bdec ..  0x2e593 ( 0x27a8 bytes)
+[INFO  fsx] 10 mapwrite  0x9083e ..  0x9600c ( 0x57cf bytes)
 "
 )]
 fn stability(#[case] args: &str, #[case] stderr: &str) {
@@ -294,7 +299,7 @@ fn miscompare() {
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
         .env("RUST_LOG", "debug")
-        .args(["-N10", "-S7", "--inject", "4"])
+        .args(["-N10", "-S9", "--inject", "3"])
         .arg(tf.path())
         .assert()
         .failure();
@@ -305,23 +310,27 @@ fn miscompare() {
             .into_string()
             .unwrap();
         assert_eq!(
-            actual_stderr,
-            "[INFO  fsx] Using seed 7
-[INFO  fsx]  1 mapwrite 0x1b166 .. 0x27bb9 ( 0xca54 bytes)
-[INFO  fsx]  2 read     0x109fa .. 0x14186 ( 0x378d bytes)
-[INFO  fsx]  3 truncate 0x27bba => 0x253bb
-[INFO  fsx]  5 mapread  0x1dc4f .. 0x1df55 (  0x307 bytes)
-[ERROR fsx] miscompare: offset= 0x1dc4f, size = 0x307
+            "[INFO  fsx] Using seed 9
+[INFO  fsx]  1 truncate     0x0 => 0x186ea
+[INFO  fsx]  2 write    0x24240 .. 0x2de98 ( 0x9c59 bytes)
+[INFO  fsx]  4 read     0x17842 .. 0x24a0b ( 0xd1ca bytes)
+[INFO  fsx]  5 read     0x25444 .. 0x2de98 ( 0x8a55 bytes)
+[INFO  fsx]  6 write    0x13683 .. 0x1f3e0 ( 0xbd5e bytes)
+[INFO  fsx]  7 read      0x8b82 ..  0xef2c ( 0x63ab bytes)
+[ERROR fsx] miscompare: offset= 0x8b82, size = 0x63ab
 [ERROR fsx] OFFSET  GOOD  BAD  RANGE  
-[ERROR fsx] 0x1dda8 0x04 0x01   0x1ae
-[ERROR fsx] Step# (mod 256) for a misdirected write may be 1
+[ERROR fsx]  0x8b82 0x03 0x00  0x6379
+[ERROR fsx] Step# for the bad data is unknown; check HOLE and EXTEND ops
 [ERROR fsx] LOG DUMP
-[ERROR fsx]  0 MAPWRITE 0x1b166 => 0x27bba ( 0xca54 bytes) HOLE
-[ERROR fsx]  1 READ     0x109fa => 0x14187 ( 0x378d bytes)
-[ERROR fsx]  2 TRUNCATE  DOWN from 0x27bba to 0x253bb
-[ERROR fsx]  3 WRITE    0x1dda8 => 0x22444 ( 0x469c bytes)
-[ERROR fsx]  4 MAPREAD  0x1dc4f => 0x1df56 (  0x307 bytes)
-"
+[ERROR fsx]  0 TRUNCATE  UP   from     0x0 to 0x186ea
+[ERROR fsx]  1 WRITE    0x24240 => 0x2de99 ( 0x9c59 bytes) HOLE
+[ERROR fsx]  2 MAPWRITE  0x5f5f => 0x14930 ( 0xe9d1 bytes)
+[ERROR fsx]  3 READ     0x17842 => 0x24a0c ( 0xd1ca bytes)
+[ERROR fsx]  4 READ     0x25444 => 0x2de99 ( 0x8a55 bytes)
+[ERROR fsx]  5 WRITE    0x13683 => 0x1f3e1 ( 0xbd5e bytes)
+[ERROR fsx]  6 READ      0x8b82 =>  0xef2d ( 0x63ab bytes)
+",
+            actual_stderr
         );
     }
     // There should be a .fsxgood artifact
@@ -343,7 +352,7 @@ fn artifacts_dir() {
     Command::cargo_bin("fsx")
         .unwrap()
         .env("RUST_LOG", "debug")
-        .args(["-N2", "-S8", "--inject", "1", "-P"])
+        .args(["-N2", "-S9", "--inject", "1", "-P"])
         .arg(artifacts_dir.path())
         .arg(tf.path())
         .assert()

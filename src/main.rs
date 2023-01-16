@@ -29,7 +29,7 @@ use nix::{
     unistd::{sysconf, SysconfVar},
 };
 use rand::{
-    distributions::{Distribution, Standard},
+    distributions::{Distribution, WeightedIndex},
     thread_rng,
     Rng,
     RngCore,
@@ -185,6 +185,15 @@ enum Op {
     MapWrite,
 }
 
+impl Op {
+    fn make_weighted_index<I>(weights: I) -> WeightedIndex<f64>
+        where I: IntoIterator<Item = f64> + ExactSizeIterator
+    {
+        assert_eq!(weights.len(), 5);
+        WeightedIndex::new(weights).unwrap()
+    }
+}
+
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
@@ -197,15 +206,15 @@ impl fmt::Display for Op {
     }
 }
 
-impl Distribution<Op> for Standard {
+impl Distribution<Op> for WeightedIndex<f64> {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
-        match rng.gen_range(0..=4) {
-            0 => Op::Read,
+        match self.sample(rng) {
+            0usize => Op::Read,
             1 => Op::Write,
             2 => Op::MapRead,
             3 => Op::Truncate,
             4 => Op::MapWrite,
-            _ => unreachable!(),
+            _ => panic!("WeightedIndex was generated with too many keys"),
         }
     }
 }
@@ -245,8 +254,6 @@ struct Exerciser {
     maxoplen:          usize,
     /// Monitor these byte ranges in extra detail.
     monitor:           Option<(u64, u64)>,
-    nomapread:         bool,
-    nomapwrite:        bool,
     nomsyncafterwrite: bool,
     norandomoplen:     bool,
     nosizechecks:      bool,
@@ -269,6 +276,7 @@ struct Exerciser {
     file:              File,
     truncbdy:          u64,
     writebdy:          u64,
+    wi:                WeightedIndex<f64>
 }
 
 impl Exerciser {
@@ -805,10 +813,7 @@ impl Exerciser {
     }
 
     fn step(&mut self) {
-        let mut op = self.rng.gen();
-        if self.blockmode && op == Op::Truncate {
-            op = Op::MapWrite;
-        }
+        let op: Op = self.wi.sample(&mut self.rng);
 
         if self.simulatedopcount > 0 && self.steps == self.simulatedopcount {
             self.writefileimage();
@@ -818,18 +823,19 @@ impl Exerciser {
         let closeopen = self.rng.gen_range(0.0..1.0) < self.closeprob;
         let invl = self.rng.gen_range(0.0..1.0) < self.invalprob;
 
+        let mut size = if self.norandomoplen {
+            self.maxoplen
+        } else {
+            self.rng.gen::<u32>() as usize % (self.maxoplen + 1)
+        };
+        let mut offset: u64 = self.rng.gen::<u32>() as u64;
+
         if op == Op::Write || op == Op::MapWrite {
-            let mut size = if self.norandomoplen {
-                self.maxoplen
-            } else {
-                self.rng.gen::<u32>() as usize % (self.maxoplen + 1)
-            };
-            let mut offset: u64 = self.rng.gen::<u32>() as u64;
             offset %= self.flen;
             if offset + size as u64 > self.flen {
                 size = usize::try_from(self.flen - offset).unwrap();
             }
-            if !self.nomapwrite && op == Op::MapWrite {
+            if op == Op::MapWrite {
                 self.mapwrite(offset, size);
             } else {
                 self.write(offset, size);
@@ -838,12 +844,6 @@ impl Exerciser {
             let fsize = u64::from(self.rng.gen::<u32>()) % self.flen;
             self.truncate(fsize)
         } else {
-            let mut size = if self.norandomoplen {
-                self.maxoplen
-            } else {
-                self.rng.gen::<u32>() as usize % (self.maxoplen + 1)
-            };
-            let mut offset: u64 = self.rng.gen::<u32>() as u64;
             offset = if self.file_size > 0 {
                 offset % self.file_size
             } else {
@@ -852,7 +852,7 @@ impl Exerciser {
             if offset + size as u64 > self.file_size {
                 size = usize::try_from(self.file_size - offset).unwrap();
             }
-            if !self.nomapread && op == Op::MapRead {
+            if op == Op::MapRead {
                 self.mapread(offset, size);
             } else {
                 self.read(offset, size);
@@ -968,6 +968,15 @@ impl From<Cli> for Exerciser {
             cli.numops.map(|x| x as usize).unwrap_or(999999),
             false,
         );
+        let wi = Op::make_weighted_index(
+            [
+                1.0,    // Read
+                1.0,    // Write
+                if cli.nomapread { 0.0 } else { 1.0 },    // MapRead
+                if cli.blockmode { 0.0 } else { 1.0 },    // Truncate
+                if cli.nomapwrite { 0.0 } else { 1.0 },    // MapWrite
+            ].into_iter()
+        );
         Exerciser {
             artifacts_dir: cli.artifacts_dir,
             blockmode: cli.blockmode,
@@ -982,8 +991,6 @@ impl From<Cli> for Exerciser {
             invalprob: cli.invalprob.map(|p| 1.0 / p as f32).unwrap_or(0.0),
             maxoplen: cli.oplen,
             monitor: cli.monitor,
-            nomapread: cli.nomapread,
-            nomapwrite: cli.nomapwrite,
             nomsyncafterwrite: cli.nomsyncafterwrite,
             norandomoplen: cli.norandomoplen,
             nosizechecks: cli.nosizechecks,
@@ -998,6 +1005,7 @@ impl From<Cli> for Exerciser {
             steps: 0,
             truncbdy: cli.truncbdy,
             writebdy: cli.writebdy,
+            wi
         }
     }
 }

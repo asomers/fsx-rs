@@ -238,16 +238,16 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::blockmode(
     "-B -S 72 -N 10 -P /tmp",
     "[INFO  fsx] Using seed 72
-[INFO  fsx]  1 mapread   0x7a51 ..  0xeef7 ( 0x74a7 bytes)
-[INFO  fsx]  2 mapwrite 0x1bfbb .. 0x22bdf ( 0x6c25 bytes)
-[INFO  fsx]  3 mapwrite 0x34117 .. 0x3d783 ( 0x966d bytes)
-[INFO  fsx]  4 mapwrite 0x3b18d .. 0x3c6ff ( 0x1573 bytes)
-[INFO  fsx]  5 mapread  0x1fbfc .. 0x284fa ( 0x88ff bytes)
-[INFO  fsx]  6 read      0x8ec4 .. 0x15701 ( 0xc83e bytes)
-[INFO  fsx]  7 mapread   0x998c ..  0x9d58 (  0x3cd bytes)
-[INFO  fsx]  8 read     0x28865 .. 0x2f824 ( 0x6fc0 bytes)
-[INFO  fsx]  9 write     0x5b17 .. 0x10d53 ( 0xb23d bytes)
-[INFO  fsx] 10 mapwrite  0xd97b .. 0x19ae3 ( 0xc169 bytes)
+[INFO  fsx]  1 write     0xc86d4 ..  0xd83ee ( 0xfd1b bytes)
+[INFO  fsx]  2 mapwrite  0xcbe82 ..  0xd1dfd ( 0x5f7c bytes)
+[INFO  fsx]  3 mapread   0xfde25 ..  0xfffff ( 0x21db bytes)
+[INFO  fsx]  4 mapread   0xb3100 ..  0xb5576 ( 0x2477 bytes)
+[INFO  fsx]  5 mapread   0x84705 ..  0x94114 ( 0xfa10 bytes)
+[INFO  fsx]  6 mapread   0x3fa22 ..  0x49c78 ( 0xa257 bytes)
+[INFO  fsx]  7 write     0xecace ..  0xf0902 ( 0x3e35 bytes)
+[INFO  fsx]  8 write     0x59439 ..  0x6165b ( 0x8223 bytes)
+[INFO  fsx]  9 mapread   0x28794 ..  0x2b63e ( 0x2eab bytes)
+[INFO  fsx] 10 mapwrite  0xb578d ..  0xb70cc ( 0x1940 bytes)
 "
 )]
 fn stability(#[case] args: &str, #[case] stderr: &str) {
@@ -255,7 +255,9 @@ fn stability(#[case] args: &str, #[case] stderr: &str) {
 
     if args.contains("-B") {
         // When using -B, must manually set file size before starting program
-        tf.as_file_mut().set_len(262144).unwrap();
+        // Set flen higher than default
+        // https://github.com/asomers/fsx-rs/issues/13
+        tf.as_file_mut().set_len(1048576).unwrap();
     }
 
     let cmd = Command::cargo_bin("fsx")

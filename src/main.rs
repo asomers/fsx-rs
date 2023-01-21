@@ -89,7 +89,7 @@ impl TypedValueParser for MonitorParser {
 }
 
 #[derive(Debug, Parser)]
-//#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None)]
 struct Cli {
     /// Beginning operation number
     #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]

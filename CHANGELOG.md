@@ -8,5 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 ### Fixed
 
+- Fixed crashes when using `-B` on files larger than 256 kB.
+  ([#17](https://github.com/asomers/fsx-rs/pull/17))
+
 - Fixed a `TryFromIntError` crash when using `-i` with high probabilities.
   ([#14](https://github.com/asomers/fsx-rs/pull/14))

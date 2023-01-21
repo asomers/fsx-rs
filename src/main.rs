@@ -978,15 +978,15 @@ impl From<Cli> for Exerciser {
             cli.flen.into()
         };
         let file_size = if cli.blockmode { flen } else { 0 };
-        let mut original_buf = vec![0u8; cli.flen as usize];
-        let good_buf = vec![0u8; cli.flen as usize];
+        let mut original_buf = vec![0u8; flen as usize];
+        let good_buf = vec![0u8; flen as usize];
         if cli.blockmode {
             // Zero existing file
             file.write_all(&good_buf).unwrap();
         }
         let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
         rng.fill_bytes(&mut original_buf[..]);
-        let fwidth = field_width(cli.flen as usize, true);
+        let fwidth = field_width(flen as usize, true);
         let swidth = field_width(cli.oplen, true);
         let stepwidth = field_width(
             cli.numops.map(|x| x as usize).unwrap_or(999999),

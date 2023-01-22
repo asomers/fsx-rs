@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] - ReleaseDate
+## [0.1.1] - 2023-01-22
 ### Fixed
 
 - Fixed crash when using `-B` on a file of 0 bytes.

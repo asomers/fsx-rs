@@ -1,7 +1,5 @@
 // vim: tw=80
-#[cfg(target_os = "freebsd")]
-use std::ffi::CString;
-use std::{fs, process::Command};
+use std::{ffi::CString, fs, process::Command};
 
 use assert_cmd::prelude::*;
 use pretty_assertions::assert_eq;
@@ -10,7 +8,6 @@ use tempfile::{NamedTempFile, TempDir};
 
 /// Test that fsx-rs's testing sequence is stable, and identical to the C-based
 /// FSX's as of FreeBSD 14.0.
-#[cfg(target_os = "freebsd")] // Depends on exact PRNG output
 #[rstest]
 // Equivalent to C's fsx -N 10 -S 4 -o 65536 -O.  Includes both MapRead
 // and MapWrite.
@@ -250,6 +247,7 @@ use tempfile::{NamedTempFile, TempDir};
 [INFO  fsx] 10 mapwrite  0xb578d ..  0xb70cc ( 0x1940 bytes)
 "
 )]
+#[cfg_attr(not(target_os = "freebsd"), ignore)] // Depends on exact PRNG output
 fn stability(#[case] args: &str, #[case] stderr: &str) {
     let mut tf = NamedTempFile::new().unwrap();
 

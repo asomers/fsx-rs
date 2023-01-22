@@ -222,12 +222,12 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            flen: default_flen(),
+            flen:              default_flen(),
             nomsyncafterwrite: false,
-            nosizechecks: false,
-            blockmode: false,
-            opsize: Default::default(),
-            weights: Default::default()
+            nosizechecks:      false,
+            blockmode:         false,
+            opsize:            Default::default(),
+            weights:           Default::default(),
         }
     }
 }
@@ -240,20 +240,20 @@ const fn default_opsize_max() -> usize {
 struct Opsize {
     /// Minium size for operations
     #[serde(default)]
-    min:    usize,
+    min:   usize,
     /// Maximum size for operations
     #[serde(default = "default_opsize_max")]
-    max:    usize,
+    max:   usize,
     /// Alignment in bytes for all operations
-    align:  Option<NonZeroUsize>
+    align: Option<NonZeroUsize>,
 }
 
 impl Default for Opsize {
     fn default() -> Self {
         Opsize {
-            min: 0,
-            max: 65536,
-            align: NonZeroUsize::new(1)
+            min:   0,
+            max:   65536,
+            align: NonZeroUsize::new(1),
         }
     }
 }
@@ -269,15 +269,15 @@ struct Weights {
     #[serde(default)]
     invalidate: f64,
     #[serde(default = "default_weight")]
-    mapread:   f64,
+    mapread:    f64,
     #[serde(default = "default_weight")]
     mapwrite:   f64,
     #[serde(default = "default_weight")]
-    read:   f64,
+    read:       f64,
     #[serde(default = "default_weight")]
-    write:   f64,
+    write:      f64,
     #[serde(default = "default_weight")]
-    truncate: f64
+    truncate:   f64,
 }
 
 impl Default for Weights {
@@ -285,11 +285,11 @@ impl Default for Weights {
         Weights {
             close_open: 0.0,
             invalidate: 0.0,
-            mapread: 1.0,
-            mapwrite: 1.0,
-            read: 1.0,
-            write: 1.0,
-            truncate: 1.0,
+            mapread:    1.0,
+            mapwrite:   1.0,
+            read:       1.0,
+            write:      1.0,
+            truncate:   1.0,
         }
     }
 }
@@ -307,7 +307,8 @@ enum Op {
 
 impl Op {
     fn make_weighted_index<I>(weights: I) -> WeightedIndex<f64>
-        where I: IntoIterator<Item = f64> + ExactSizeIterator
+    where
+        I: IntoIterator<Item = f64> + ExactSizeIterator,
     {
         assert_eq!(weights.len(), 7);
         WeightedIndex::new(weights).unwrap()
@@ -395,7 +396,7 @@ struct Exerciser {
     // Number of steps completed so far
     steps:             u64,
     file:              File,
-    wi:                WeightedIndex<f64>
+    wi:                WeightedIndex<f64>,
 }
 
 impl Exerciser {
@@ -613,7 +614,9 @@ impl Exerciser {
                     stepwidth = self.stepwidth
                 ),
                 LogEntry::CloseOpen => error!(
-                    "{:stepwidth$} CLOSE/OPEN", i, stepwidth = self.stepwidth
+                    "{:stepwidth$} CLOSE/OPEN",
+                    i,
+                    stepwidth = self.stepwidth
                 ),
                 LogEntry::Read(offset, size) => error!(
                     "{:stepwidth$} READ     {:#fwidth$x} => {:#fwidth$x} \
@@ -693,7 +696,9 @@ impl Exerciser {
                     );
                 }
                 LogEntry::Invalidate => error!(
-                    "{:stepwidth$} INVALIDATE", i, stepwidth = self.stepwidth
+                    "{:stepwidth$} INVALIDATE",
+                    i,
+                    stepwidth = self.stepwidth
                 ),
             }
             i += 1;
@@ -949,9 +954,7 @@ impl Exerciser {
         let mut offset: u64 = self.rng.gen::<u32>() as u64;
 
         match op {
-            Op::CloseOpen => {
-                self.closeopen()
-            }
+            Op::CloseOpen => self.closeopen(),
             Op::Write | Op::MapWrite => {
                 offset %= self.flen;
                 offset -= offset % self.align as u64;
@@ -969,9 +972,7 @@ impl Exerciser {
                 let fsize = u64::from(self.rng.gen::<u32>()) % self.flen;
                 self.truncate(fsize)
             }
-            Op::Invalidate => {
-                self.invalidate()
-            }
+            Op::Invalidate => self.invalidate(),
             Op::Read | Op::MapRead => {
                 offset = if self.file_size > 0 {
                     offset % self.file_size
@@ -1099,7 +1100,8 @@ impl Exerciser {
                 conf.weights.truncate,
                 conf.weights.invalidate,
                 conf.weights.mapwrite,
-            ].into_iter()
+            ]
+            .into_iter(),
         );
         Exerciser {
             align: conf.opsize.align.map(usize::from).unwrap_or(1),
@@ -1124,7 +1126,7 @@ impl Exerciser {
             original_buf,
             rng,
             steps: 0,
-            wi
+            wi,
         }
     }
 }

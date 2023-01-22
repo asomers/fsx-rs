@@ -1,10 +1,5 @@
 // vim: tw=80
-use std::{
-    ffi::CString,
-    fs,
-    io::Write,
-    process::Command
-};
+use std::{ffi::CString, fs, io::Write, process::Command};
 
 use assert_cmd::prelude::*;
 use pretty_assertions::assert_eq;
@@ -21,7 +16,7 @@ use tempfile::{NamedTempFile, TempDir};
      min = 65536
      max = 65536",
     "-N10 -S 2",
-"[INFO  fsx] Using seed 2
+    "[INFO  fsx] Using seed 2
 [INFO  fsx]  1 mapwrite 0x17dbf .. 0x27dbe (0x10000 bytes)
 [INFO  fsx]  2 read     0x216ce .. 0x27dbe ( 0x66f1 bytes)
 [INFO  fsx]  3 write    0x2309f .. 0x3309e (0x10000 bytes)
@@ -389,9 +384,11 @@ fn artifacts_dir() {
 fn blockmode_zero() {
     let mut cf = NamedTempFile::new().unwrap();
     cf.write_all(
-    b"blockmode = true
+        b"blockmode = true
 [weights]
-truncate = 0").unwrap();
+truncate = 0",
+    )
+    .unwrap();
 
     let tf = NamedTempFile::new().unwrap();
     let artifacts_dir = TempDir::new().unwrap();

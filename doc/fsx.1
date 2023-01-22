@@ -8,8 +8,6 @@
 .Nm
 .Op Fl hV
 .Op Fl b Ar OPNUM
-.Op Fl c Ar P
-.Op Fl i Ar P
 .Op Fl f Ar PATH
 .Op Fl m Ar FROM:TO
 .Op Fl N Ar NUMOPS
@@ -37,16 +35,6 @@ Begin real I/O at operation number
 .Ar OPNUM .
 Previous operations will be simulated, and their cumulative effect written
 to the file just before real I/O starts.
-.It Fl c Ar P
-After each operation, randomly close and reopen the file with a probability of
-1 in
-.Ar P .
-.It Fl i Ar P
-After each operation, randomly call
-.Fn msync _ _ MS_INVALIDATE
-with a probability of
-1 in
-.Ar P .
 .It Fl f Ar PATH
 Load configuration from
 .Ar PATH .

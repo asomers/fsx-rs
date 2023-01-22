@@ -94,14 +94,6 @@ struct Cli {
     #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]
     opnum: NonZeroU64,
 
-    /// 1/P chance of file close+open at each op [default infinity]
-    #[arg(short = 'c', value_name = "P")]
-    closeprob: Option<u32>,
-
-    /// 1/P chance of msync(MS_INVALIDATE) [default infinity]
-    #[arg(short = 'i', value_name = "P")]
-    invalprob: Option<u32>,
-
     /// Config file path
     #[arg(short = 'f', value_name = "PATH")]
     config: Option<PathBuf>,
@@ -212,7 +204,7 @@ impl Config {
             eprintln!("error: cannot use both flen and blockmode");
             process::exit(2);
         }
-        if self.blockmode && self.weights._close_open > 0.0 {
+        if self.blockmode && self.weights.close_open > 0.0 {
             eprintln!("error: cannot use close_open with blockmode");
             process::exit(2);
         }
@@ -272,11 +264,10 @@ const fn default_weight() -> f64 {
 
 #[derive(Debug, Deserialize)]
 struct Weights {
-    // TODO: turn close_open and invalidate into proper Ops, not special cases
-    #[serde(default, rename = "close_open")]
-    _close_open: f64,
-    #[serde(default, rename = "invalidate")]
-    _invalidate: f64,
+    #[serde(default)]
+    close_open: f64,
+    #[serde(default)]
+    invalidate: f64,
     #[serde(default = "default_weight")]
     mapread:   f64,
     #[serde(default = "default_weight")]
@@ -292,8 +283,8 @@ struct Weights {
 impl Default for Weights {
     fn default() -> Self {
         Weights {
-            _close_open: 0.0,
-            _invalidate: 0.0,
+            close_open: 0.0,
+            invalidate: 0.0,
             mapread: 1.0,
             mapwrite: 1.0,
             read: 1.0,
@@ -305,10 +296,12 @@ impl Default for Weights {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Op {
+    CloseOpen,
     Read,
     Write,
     MapRead,
     Truncate,
+    Invalidate,
     MapWrite,
 }
 
@@ -316,7 +309,7 @@ impl Op {
     fn make_weighted_index<I>(weights: I) -> WeightedIndex<f64>
         where I: IntoIterator<Item = f64> + ExactSizeIterator
     {
-        assert_eq!(weights.len(), 5);
+        assert_eq!(weights.len(), 7);
         WeightedIndex::new(weights).unwrap()
     }
 }
@@ -324,10 +317,12 @@ impl Op {
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            Op::CloseOpen => "close/open".fmt(f),
             Op::Read => "read".fmt(f),
             Op::Write => "write".fmt(f),
             Op::MapRead => "mapread".fmt(f),
             Op::Truncate => "truncate".fmt(f),
+            Op::Invalidate => "invalidate".fmt(f),
             Op::MapWrite => "mapwrite".fmt(f),
         }
     }
@@ -336,11 +331,13 @@ impl fmt::Display for Op {
 impl Distribution<Op> for WeightedIndex<f64> {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
         match self.sample(rng) {
-            0usize => Op::Read,
-            1 => Op::Write,
-            2 => Op::MapRead,
-            3 => Op::Truncate,
-            4 => Op::MapWrite,
+            0usize => Op::CloseOpen,
+            1 => Op::Read,
+            2 => Op::Write,
+            3 => Op::MapRead,
+            4 => Op::Truncate,
+            5 => Op::Invalidate,
+            6 => Op::MapWrite,
             _ => panic!("WeightedIndex was generated with too many keys"),
         }
     }
@@ -349,6 +346,7 @@ impl Distribution<Op> for WeightedIndex<f64> {
 #[derive(Clone, Copy)]
 enum LogEntry {
     Skip(Op),
+    CloseOpen,
     // offset, size
     Read(u64, usize),
     // old file len, offset, size
@@ -357,6 +355,7 @@ enum LogEntry {
     MapRead(u64, usize),
     // old file len, new file len
     Truncate(u64, u64),
+    Invalidate,
     // old file len, offset, size
     MapWrite(u64, u64, usize),
 }
@@ -365,8 +364,6 @@ struct Exerciser {
     align:             usize,
     artifacts_dir:     Option<PathBuf>,
     blockmode:         bool,
-    /// Chance of close+open at each op
-    closeprob:         f32,
     /// Current file size
     file_size:         u64,
     flen:              u64,
@@ -375,8 +372,6 @@ struct Exerciser {
     fwidth:            usize,
     /// Inject an error on this step
     inject:            Option<u64>,
-    /// Chance of MS_INVALIDATE at each op
-    invalprob:         f32,
     // What the file ought to contain
     good_buf:          Vec<u8>,
     /// Monitor these byte ranges in extra detail.
@@ -516,6 +511,8 @@ impl Exerciser {
 
     /// Close and reopen the file
     fn closeopen(&mut self) {
+        self.oplog.push(LogEntry::CloseOpen);
+
         if self.skip() {
             return;
         }
@@ -615,6 +612,9 @@ impl Exerciser {
                     op,
                     stepwidth = self.stepwidth
                 ),
+                LogEntry::CloseOpen => error!(
+                    "{:stepwidth$} CLOSE/OPEN", i, stepwidth = self.stepwidth
+                ),
                 LogEntry::Read(offset, size) => error!(
                     "{:stepwidth$} READ     {:#fwidth$x} => {:#fwidth$x} \
                      ({:#swidth$x} bytes)",
@@ -692,6 +692,9 @@ impl Exerciser {
                         fwidth = self.fwidth
                     );
                 }
+                LogEntry::Invalidate => error!(
+                    "{:stepwidth$} INVALIDATE", i, stepwidth = self.stepwidth
+                ),
             }
             i += 1;
         }
@@ -876,7 +879,9 @@ impl Exerciser {
         sysconf(SysconfVar::PAGE_SIZE).unwrap().unwrap() as i32
     }
 
-    fn invalidate(&self) {
+    fn invalidate(&mut self) {
+        self.oplog.push(LogEntry::Invalidate);
+
         if self.skip() {
             return;
         }
@@ -940,52 +945,53 @@ impl Exerciser {
         }
         self.steps += 1;
 
-        let closeopen = self.rng.gen_range(0.0..1.0) < self.closeprob;
-        let invl = self.rng.gen_range(0.0..1.0) < self.invalprob;
-
         let mut size = self.rng.gen_range(self.opsize.min..=self.opsize.max);
         let mut offset: u64 = self.rng.gen::<u32>() as u64;
 
-        if op == Op::Write || op == Op::MapWrite {
-            offset %= self.flen;
-            offset -= offset % self.align as u64;
-            if offset + size as u64 > self.flen {
-                size = usize::try_from(self.flen - offset).unwrap();
+        match op {
+            Op::CloseOpen => {
+                self.closeopen()
             }
-            size -= size % self.align;
-            if op == Op::MapWrite {
-                self.mapwrite(offset, size);
-            } else {
-                self.write(offset, size);
+            Op::Write | Op::MapWrite => {
+                offset %= self.flen;
+                offset -= offset % self.align as u64;
+                if offset + size as u64 > self.flen {
+                    size = usize::try_from(self.flen - offset).unwrap();
+                }
+                size -= size % self.align;
+                if op == Op::MapWrite {
+                    self.mapwrite(offset, size);
+                } else {
+                    self.write(offset, size);
+                }
             }
-        } else if op == Op::Truncate {
-            let fsize = u64::from(self.rng.gen::<u32>()) % self.flen;
-            self.truncate(fsize)
-        } else {
-            offset = if self.file_size > 0 {
-                offset % self.file_size
-            } else {
-                0
-            };
-            offset -= offset % self.align as u64;
-            if offset + size as u64 > self.file_size {
-                size = usize::try_from(self.file_size - offset).unwrap();
+            Op::Truncate => {
+                let fsize = u64::from(self.rng.gen::<u32>()) % self.flen;
+                self.truncate(fsize)
             }
-            size -= size % self.align;
-            if op == Op::MapRead {
-                self.mapread(offset, size);
-            } else {
-                self.read(offset, size);
+            Op::Invalidate => {
+                self.invalidate()
+            }
+            Op::Read | Op::MapRead => {
+                offset = if self.file_size > 0 {
+                    offset % self.file_size
+                } else {
+                    0
+                };
+                offset -= offset % self.align as u64;
+                if offset + size as u64 > self.file_size {
+                    size = usize::try_from(self.file_size - offset).unwrap();
+                }
+                size -= size % self.align;
+                if op == Op::MapRead {
+                    self.mapread(offset, size);
+                } else {
+                    self.read(offset, size);
+                }
             }
         }
         if self.steps > self.simulatedopcount {
             self.check_size();
-        }
-        if invl {
-            self.invalidate()
-        }
-        if closeopen {
-            self.closeopen()
         }
     }
 
@@ -1086,10 +1092,12 @@ impl Exerciser {
         );
         let wi = Op::make_weighted_index(
             [
+                conf.weights.close_open,
                 conf.weights.read,
                 conf.weights.write,
                 conf.weights.mapread,
                 conf.weights.truncate,
+                conf.weights.invalidate,
                 conf.weights.mapwrite,
             ].into_iter()
         );
@@ -1097,7 +1105,6 @@ impl Exerciser {
             align: conf.opsize.align.map(usize::from).unwrap_or(1),
             artifacts_dir: cli.artifacts_dir,
             blockmode: conf.blockmode,
-            closeprob: cli.closeprob.map(|p| 1.0 / p as f32).unwrap_or(0.0),
             file,
             file_size,
             flen,
@@ -1105,7 +1112,6 @@ impl Exerciser {
             fname: cli.fname,
             good_buf,
             inject: cli.inject,
-            invalprob: cli.invalprob.map(|p| 1.0 / p as f32).unwrap_or(0.0),
             monitor: cli.monitor,
             nomsyncafterwrite: conf.nomsyncafterwrite,
             nosizechecks: conf.nosizechecks,

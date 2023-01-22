@@ -105,6 +105,23 @@ use tempfile::{NamedTempFile, TempDir};
 [INFO  fsx] 10 read     0x1110e .. 0x12858 ( 0x174b bytes)
 "
 )]
+// Equivalent to C's fsx -N 10 -S 20 -U
+// Exercises -U, though that doesn't change the output
+#[case::nomsyncafterwrite(
+    "-N10 -S20 -U",
+    "[INFO  fsx] Using seed 20
+[DEBUG fsx]  1 skipping zero size read
+[INFO  fsx]  2 write    0x19f18 .. 0x249f6 ( 0xaadf bytes)
+[INFO  fsx]  3 write    0x3a8ba .. 0x3f983 ( 0x50ca bytes)
+[INFO  fsx]  4 mapwrite 0x17b18 .. 0x1be26 ( 0x430f bytes)
+[INFO  fsx]  5 write    0x314db .. 0x3e9a7 ( 0xd4cd bytes)
+[INFO  fsx]  6 write    0x3ac28 .. 0x3ffff ( 0x53d8 bytes)
+[INFO  fsx]  7 truncate 0x40000 =>  0x54f7
+[INFO  fsx]  8 mapread   0x1d79 ..  0x54f6 ( 0x377e bytes)
+[INFO  fsx]  9 truncate  0x54f7 => 0x24268
+[INFO  fsx] 10 read     0x1110e .. 0x12858 ( 0x174b bytes)
+"
+)]
 // Equivalent to C's fsx -N 10 -S 30 -o 4096
 // Exercises -o
 #[case::oplen(

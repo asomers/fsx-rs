@@ -977,6 +977,10 @@ impl From<Cli> for Exerciser {
         } else {
             cli.flen.into()
         };
+        if flen == 0 {
+            error!("ERROR: file length must be greater than zero");
+            process::exit(2);
+        }
         let file_size = if cli.blockmode { flen } else { 0 };
         let mut original_buf = vec![0u8; flen as usize];
         let good_buf = vec![0u8; flen as usize];

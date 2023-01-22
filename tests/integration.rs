@@ -351,3 +351,29 @@ fn artifacts_dir() {
     // finally, clean it up.
     fs::remove_file(&fsxgoodfname).unwrap();
 }
+
+// https://github.com/asomers/fsx-rs/issues/20
+#[test]
+fn blockmode_zero() {
+    let tf = NamedTempFile::new().unwrap();
+    let artifacts_dir = TempDir::new().unwrap();
+
+    let cmd = Command::cargo_bin("fsx")
+        .unwrap()
+        .env("RUST_LOG", "warn")
+        .args(["-B", "-N2", "-S72", "-P"])
+        .arg(artifacts_dir.path())
+        .arg(tf.path())
+        .assert()
+        .failure();
+
+    let actual_stderr = CString::new(cmd.get_output().stderr.clone())
+        .unwrap()
+        .into_string()
+        .unwrap();
+    assert_eq!(
+        actual_stderr,
+        "[ERROR fsx] ERROR: file length must be greater than zero
+"
+    );
+}

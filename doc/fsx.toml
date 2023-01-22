@@ -73,3 +73,11 @@ invalidate = 1
 # Shrink or extend the file with ftruncate(2)
 # Default: 10
 truncate = 1
+
+# fsync()
+# Default: 0
+fsync = 1
+
+# fdatasync()
+# Default: 0
+fdatasync = 1

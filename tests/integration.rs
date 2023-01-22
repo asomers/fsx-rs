@@ -414,3 +414,40 @@ truncate = 0",
 "
     );
 }
+
+/// Checks that the weights are assigned in the correct order
+#[rstest]
+#[case::fsync(
+    "fsync",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 fsync
+"
+)]
+#[case::fdatasync(
+    "fdatasync",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 fdatasync
+"
+)]
+fn weights(#[case] op: &str, #[case] stderr: &str) {
+    let mut cf = NamedTempFile::new().unwrap();
+    let conf = format!("[weights]\n{op} = 1000000");
+    cf.write_all(conf.as_bytes()).unwrap();
+
+    let tf = NamedTempFile::new().unwrap();
+
+    let cmd = Command::cargo_bin("fsx")
+        .unwrap()
+        .env("RUST_LOG", "debug")
+        .args(["-S", "200", "-N", "1"])
+        .arg("-f")
+        .arg(cf.path())
+        .arg(tf.path())
+        .assert()
+        .success();
+    let actual_stderr = CString::new(cmd.get_output().stderr.clone())
+        .unwrap()
+        .into_string()
+        .unwrap();
+    assert_eq!(stderr, actual_stderr);
+}

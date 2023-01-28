@@ -278,6 +278,10 @@ struct Weights {
     write:      f64,
     #[serde(default = "default_weight")]
     truncate:   f64,
+    #[serde(default)]
+    fsync:      f64,
+    #[serde(default)]
+    fdatasync:  f64,
 }
 
 impl Default for Weights {
@@ -290,6 +294,8 @@ impl Default for Weights {
             read:       1.0,
             write:      1.0,
             truncate:   1.0,
+            fsync:      0.0,
+            fdatasync:  0.0,
         }
     }
 }
@@ -303,6 +309,8 @@ enum Op {
     Truncate,
     Invalidate,
     MapWrite,
+    Fsync,
+    Fdatasync,
 }
 
 impl Op {
@@ -310,7 +318,7 @@ impl Op {
     where
         I: IntoIterator<Item = f64> + ExactSizeIterator,
     {
-        assert_eq!(weights.len(), 7);
+        assert_eq!(weights.len(), 9);
         WeightedIndex::new(weights).unwrap()
     }
 }
@@ -325,6 +333,8 @@ impl fmt::Display for Op {
             Op::Truncate => "truncate".fmt(f),
             Op::Invalidate => "invalidate".fmt(f),
             Op::MapWrite => "mapwrite".fmt(f),
+            Op::Fsync => "fsync".fmt(f),
+            Op::Fdatasync => "fdatasync".fmt(f),
         }
     }
 }
@@ -339,6 +349,8 @@ impl Distribution<Op> for WeightedIndex<f64> {
             4 => Op::Truncate,
             5 => Op::Invalidate,
             6 => Op::MapWrite,
+            7 => Op::Fsync,
+            8 => Op::Fdatasync,
             _ => panic!("WeightedIndex was generated with too many keys"),
         }
     }
@@ -359,6 +371,8 @@ enum LogEntry {
     Invalidate,
     // old file len, offset, size
     MapWrite(u64, u64, usize),
+    Fsync,
+    Fdatasync,
 }
 
 struct Exerciser {
@@ -700,6 +714,14 @@ impl Exerciser {
                     i,
                     stepwidth = self.stepwidth
                 ),
+                LogEntry::Fsync => {
+                    error!("{:stepwidth$} FSYNC", i, stepwidth = self.stepwidth)
+                }
+                LogEntry::Fdatasync => error!(
+                    "{:stepwidth$} FDATASYNC",
+                    i,
+                    stepwidth = self.stepwidth
+                ),
             }
             i += 1;
         }
@@ -863,6 +885,26 @@ impl Exerciser {
         println!("All operations completed A-OK!");
     }
 
+    fn fsync(&mut self) {
+        self.oplog.push(LogEntry::Fsync);
+
+        if self.skip() {
+            return;
+        }
+        info!("{:width$} fsync", self.steps, width = self.stepwidth);
+        self.file.sync_all().unwrap();
+    }
+
+    fn fdatasync(&mut self) {
+        self.oplog.push(LogEntry::Fdatasync);
+
+        if self.skip() {
+            return;
+        }
+        info!("{:width$} fdatasync", self.steps, width = self.stepwidth);
+        self.file.sync_data().unwrap();
+    }
+
     fn gendata(&mut self, offset: u64, mut size: usize) {
         let mut uoff = usize::try_from(offset).unwrap();
         loop {
@@ -990,6 +1032,8 @@ impl Exerciser {
                     self.read(offset, size);
                 }
             }
+            Op::Fsync => self.fsync(),
+            Op::Fdatasync => self.fdatasync(),
         }
         if self.steps > self.simulatedopcount {
             self.check_size();
@@ -1100,6 +1144,8 @@ impl Exerciser {
                 conf.weights.truncate,
                 conf.weights.invalidate,
                 conf.weights.mapwrite,
+                conf.weights.fsync,
+                conf.weights.fdatasync,
             ]
             .into_iter(),
         );

@@ -17,6 +17,17 @@ build: &BUILD
     - . $HOME/.cargo/env || true
     - cargo test
 
+# Check only, for cross-OS testing
+check: &CHECK
+  cargo_cache:
+    folder: $HOME/.cargo/registry
+    fingerprint_script: cat Cargo.lock || echo ""
+  setup_script:
+    - rustup target add $TARGET
+  check_script:
+    - . $HOME/.cargo/env || true
+    - cargo check --target $TARGET --all-features
+
 task:
   env:
     VERSION: 1.63.0
@@ -61,4 +72,13 @@ task:
   setup_script:
     - rustup component add rustfmt
   << : *BUILD
+  before_cache_script: rm -rf $HOME/.cargo/registry/index
+
+task:
+  name: NetBSD MSRV
+  env:
+    TARGET: x86_64-unknown-netbsd
+  container:
+    image: rust:1.63.0
+  << : *CHECK
   before_cache_script: rm -rf $HOME/.cargo/registry/index

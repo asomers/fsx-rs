@@ -183,6 +183,7 @@ name = "fsx"
 version = "0.1.1"
 dependencies = [
  "assert_cmd",
+ "cfg-if",
  "clap",
  "env_logger",
  "libc",

@@ -14,6 +14,7 @@ use std::{
     process,
 };
 
+use cfg_if::cfg_if;
 use clap::{
     builder::TypedValueParser,
     error::ErrorKind,
@@ -25,7 +26,6 @@ use clap::{
 use libc::c_void;
 use log::{debug, error, info, log, warn, Level};
 use nix::{
-    fcntl::posix_fallocate,
     sys::mman::{mmap, msync, munmap, MapFlags, MsFlags, ProtFlags},
     unistd::{sysconf, SysconfVar},
 };
@@ -39,6 +39,28 @@ use rand::{
 use rand_xorshift::XorShiftRng;
 use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 use serde_derive::Deserialize;
+
+cfg_if! {
+    if #[cfg(any(
+            target_os = "android",
+            target_os = "dragonfly",
+            target_os = "emscripten",
+            target_os = "freebsd",
+            target_os = "fuchsia",
+            target_os = "linux"
+    ))] {
+        use nix::fcntl::posix_fallocate;
+    } else {
+        fn posix_fallocate(
+            _fd: std::os::unix::io::RawFd,
+            _offset: libc::off_t,
+            _len: libc::off_t,
+        ) -> nix::Result<()> {
+                eprintln!("posix_fallocate is not supported on this platform.");
+                process::exit(1);
+         }
+    }
+}
 
 /// Calculate the maximum field width needed to print numbers up to this size
 fn field_width(max: usize, hex: bool) -> usize {
@@ -1115,9 +1137,7 @@ impl Exerciser {
         match r {
             Ok(()) => (),
             Err(nix::Error::EINVAL) => {
-                eprintln!(
-                    "Target file system does not support posix_fallocate."
-                );
+                eprintln!("Test file system does not support posix_fallocate.");
                 self.fail();
             }
             Err(e) => {

@@ -22,10 +22,11 @@ nosizechecks = false
 #
 # Usually, when testing block devices, one should also set:
 # * opsize.align - to the block device's minimum allocation size
-# * flen               - do not set this at all
-# * weights.close_open - 0.0
-# * weights.truncate   - 0.0
-# * -P                 - To anything except the device under test
+# * flen                      - do not set this at all
+# * weights.close_open        - 0.0
+# * weights.posix_fallocate   - 0.0
+# * weights.truncate          - 0.0
+# * -P                        - To anything except the device under test
 # Default: false
 blockmode = false
 
@@ -39,7 +40,7 @@ max = 65536
 # Default: 0
 min = 0
 
-# Alignment in bytes for any read, write, or truncate operation
+# Alignment in bytes for any read, write, truncate, or posix_fallocate operation
 # Default: 1
 align = 1
 
@@ -81,3 +82,8 @@ fsync = 1
 # fdatasync()
 # Default: 0
 fdatasync = 1
+
+# posix_fallocate()
+# NB: not all file systems are capable of supporting this operation.
+# Default: 0
+posix_fallocate = 0

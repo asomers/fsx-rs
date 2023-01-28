@@ -522,3 +522,45 @@ fn weights(#[case] wconf: &str, #[case] stderr: &str) {
         .unwrap();
     assert_eq!(stderr, actual_stderr);
 }
+
+#[test]
+fn posix_fallocate() {
+    let mut cf = NamedTempFile::new().unwrap();
+    cf.write_all(b"[weights]\nposix_fallocate=1000000").unwrap();
+
+    let tf = NamedTempFile::new().unwrap();
+
+    let mut cmd = Command::cargo_bin("fsx").unwrap();
+    cmd.env("RUST_LOG", "debug")
+        .args(["-S", "200", "-N", "1"])
+        .arg("-f")
+        .arg(cf.path())
+        .arg(tf.path());
+    let result = cmd.ok();
+    match result {
+        Ok(r) => {
+            // fsx passed.  Now check its output
+            let actual_stderr =
+                CString::new(r.stderr).unwrap().into_string().unwrap();
+            let expected = "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 posix_fallocate 0x18004 .. 0x1a03a ( 0x2037 bytes)
+";
+            assert_eq!(expected, actual_stderr);
+        }
+        Err(e) => {
+            let actual_stderr =
+                CString::new(e.as_output().unwrap().stderr.clone())
+                    .unwrap()
+                    .into_string()
+                    .unwrap();
+            if actual_stderr
+                .contains("Test file system does not support posix_fallocate.")
+            {
+                // XXX It would be nice if we could report a "skipped" status
+                eprintln!("Skipped(posix_fallocate unsupported)");
+            } else {
+                panic!("{e}");
+            }
+        }
+    }
+}

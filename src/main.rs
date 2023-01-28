@@ -25,6 +25,7 @@ use clap::{
 use libc::c_void;
 use log::{debug, error, info, log, warn, Level};
 use nix::{
+    fcntl::posix_fallocate,
     sys::mman::{mmap, msync, munmap, MapFlags, MsFlags, ProtFlags},
     unistd::{sysconf, SysconfVar},
 };
@@ -212,6 +213,10 @@ impl Config {
             eprintln!("error: cannot use truncate with blockmode");
             process::exit(2);
         }
+        if self.blockmode && self.weights.posix_fallocate > 0.0 {
+            eprintln!("error: cannot use posix_fallocate with blockmode");
+            process::exit(2);
+        }
         if self.blockmode && cli.artifacts_dir.is_none() {
             eprintln!("error: must specify -P when using blockmode");
             process::exit(2);
@@ -265,37 +270,40 @@ const fn default_weight() -> f64 {
 #[derive(Debug, Deserialize)]
 struct Weights {
     #[serde(default)]
-    close_open: f64,
+    close_open:      f64,
     #[serde(default)]
-    invalidate: f64,
+    invalidate:      f64,
     #[serde(default = "default_weight")]
-    mapread:    f64,
+    mapread:         f64,
     #[serde(default = "default_weight")]
-    mapwrite:   f64,
+    mapwrite:        f64,
     #[serde(default = "default_weight")]
-    read:       f64,
+    read:            f64,
     #[serde(default = "default_weight")]
-    write:      f64,
+    write:           f64,
     #[serde(default = "default_weight")]
-    truncate:   f64,
+    truncate:        f64,
     #[serde(default)]
-    fsync:      f64,
+    fsync:           f64,
     #[serde(default)]
-    fdatasync:  f64,
+    fdatasync:       f64,
+    #[serde(default)]
+    posix_fallocate: f64,
 }
 
 impl Default for Weights {
     fn default() -> Self {
         Weights {
-            close_open: 0.0,
-            invalidate: 0.0,
-            mapread:    1.0,
-            mapwrite:   1.0,
-            read:       1.0,
-            write:      1.0,
-            truncate:   1.0,
-            fsync:      0.0,
-            fdatasync:  0.0,
+            close_open:      0.0,
+            invalidate:      0.0,
+            mapread:         1.0,
+            mapwrite:        1.0,
+            read:            1.0,
+            write:           1.0,
+            truncate:        1.0,
+            fsync:           0.0,
+            fdatasync:       0.0,
+            posix_fallocate: 0.0,
         }
     }
 }
@@ -311,6 +319,7 @@ enum Op {
     MapWrite,
     Fsync,
     Fdatasync,
+    PosixFallocate,
 }
 
 impl Op {
@@ -318,7 +327,7 @@ impl Op {
     where
         I: IntoIterator<Item = f64> + ExactSizeIterator,
     {
-        assert_eq!(weights.len(), 9);
+        assert_eq!(weights.len(), 10);
         WeightedIndex::new(weights).unwrap()
     }
 }
@@ -335,6 +344,7 @@ impl fmt::Display for Op {
             Op::MapWrite => "mapwrite".fmt(f),
             Op::Fsync => "fsync".fmt(f),
             Op::Fdatasync => "fdatasync".fmt(f),
+            Op::PosixFallocate => "posix_fallocate".fmt(f),
         }
     }
 }
@@ -351,6 +361,7 @@ impl Distribution<Op> for WeightedIndex<f64> {
             6 => Op::MapWrite,
             7 => Op::Fsync,
             8 => Op::Fdatasync,
+            9 => Op::PosixFallocate,
             _ => panic!("WeightedIndex was generated with too many keys"),
         }
     }
@@ -373,6 +384,8 @@ enum LogEntry {
     MapWrite(u64, u64, usize),
     Fsync,
     Fdatasync,
+    // offset, len
+    PosixFallocate(u64, u64),
 }
 
 struct Exerciser {
@@ -722,6 +735,19 @@ impl Exerciser {
                     i,
                     stepwidth = self.stepwidth
                 ),
+                LogEntry::PosixFallocate(offset, len) => {
+                    error!(
+                        "{:stepwidth$} POSIX_FALLOCATE {:#fwidth$x} => \
+                         {:#fwidth$x} ({:#swidth$x} bytes)",
+                        i,
+                        offset,
+                        offset + len - 1,
+                        len,
+                        stepwidth = self.stepwidth,
+                        swidth = self.swidth,
+                        fwidth = self.fwidth
+                    );
+                }
             }
             i += 1;
         }
@@ -1034,9 +1060,70 @@ impl Exerciser {
             }
             Op::Fsync => self.fsync(),
             Op::Fdatasync => self.fdatasync(),
+            Op::PosixFallocate => {
+                offset %= self.flen;
+                if offset + size as u64 > self.flen {
+                    size = usize::try_from(self.flen - offset).unwrap();
+                }
+                size -= size % self.align;
+                self.posix_fallocate(offset, size as u64)
+            }
         }
         if self.steps > self.simulatedopcount {
             self.check_size();
+        }
+    }
+
+    fn posix_fallocate(&mut self, offset: u64, len: u64) {
+        let new_size = self.file_size.max(offset + len);
+        if new_size > self.file_size {
+            safemem::write_bytes(
+                &mut self.good_buf[self.file_size as usize..new_size as usize],
+                0,
+            )
+        }
+        self.file_size = new_size;
+        self.oplog.push(LogEntry::PosixFallocate(offset, len));
+
+        if self.skip() {
+            return;
+        }
+
+        // XXX Should not log at WARN if size < self.monitor.0 and
+        // self.file_size < self.monitor.0.  But the C-based implementation
+        // does.
+        let mut loglevel = Level::Info;
+        if let Some((_, end)) = self.monitor {
+            if len <= end {
+                loglevel = Level::Warn;
+            }
+        }
+        log!(
+            loglevel,
+            "{:stepwidth$} posix_fallocate {:#fwidth$x} .. {:#fwidth$x} \
+             ({:#swidth$x} bytes)",
+            self.steps,
+            offset,
+            offset + len - 1,
+            len,
+            stepwidth = self.stepwidth,
+            fwidth = self.fwidth,
+            swidth = self.swidth
+        );
+        let r =
+            posix_fallocate(self.file.as_raw_fd(), offset as i64, len as i64);
+        match r {
+            Ok(()) => (),
+            Err(nix::Error::EINVAL) => {
+                eprintln!(
+                    "Target file system does not support posix_fallocate."
+                );
+                self.fail();
+            }
+            Err(e) => {
+                eprintln!("posix_fallocate unexpectedly failed with {e}");
+                self.fail();
+            }
         }
     }
 
@@ -1146,6 +1233,7 @@ impl Exerciser {
                 conf.weights.mapwrite,
                 conf.weights.fsync,
                 conf.weights.fdatasync,
+                conf.weights.posix_fallocate,
             ]
             .into_iter(),
         );

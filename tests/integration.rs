@@ -524,6 +524,17 @@ fn weights(#[case] wconf: &str, #[case] stderr: &str) {
 }
 
 #[test]
+#[cfg_attr(
+    not(any(
+        target_os = "android",
+        target_os = "dragonfly",
+        target_os = "emscripten",
+        target_os = "freebsd",
+        target_os = "fuchsia",
+        target_os = "linux"
+    )),
+    ignore
+)]
 fn posix_fallocate() {
     let mut cf = NamedTempFile::new().unwrap();
     cf.write_all(b"[weights]\nposix_fallocate=1000000").unwrap();

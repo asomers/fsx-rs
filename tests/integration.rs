@@ -415,24 +415,95 @@ truncate = 0",
     );
 }
 
+/// Checks that the weights are assigned in the correct order, for operations
+/// that must read.
+#[rstest]
+#[case::read(
+    "[weights]\nread = 1000000",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 read        0x0 ..  0xfff ( 0x1000 bytes)
+"
+)]
+#[case::mapread(
+    "[weights]\nmapread = 1000000",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 mapread     0x0 ..  0xfff ( 0x1000 bytes)
+"
+)]
+#[case::invalidate(
+    "[weights]\ninvalidate = 1000000",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 msync(MS_INVALIDATE)
+"
+)]
+fn read_weights(#[case] wconf: &str, #[case] stderr: &str) {
+    let mut cf = NamedTempFile::new().unwrap();
+    let conf = format!(
+        "blockmode=true\n[opsize]\nalign=4096\nmin=4096\n{wconf}\ntruncate = \
+         0.0"
+    );
+    cf.write_all(conf.as_bytes()).unwrap();
+
+    let mut tf = NamedTempFile::new().unwrap();
+    tf.as_file_mut().set_len(4096).unwrap();
+
+    let cmd = Command::cargo_bin("fsx")
+        .unwrap()
+        .env("RUST_LOG", "debug")
+        .args(["-S", "200", "-N", "1", "-P", "/tmp"])
+        .arg("-f")
+        .arg(cf.path())
+        .arg(tf.path())
+        .assert()
+        .success();
+    let actual_stderr = CString::new(cmd.get_output().stderr.clone())
+        .unwrap()
+        .into_string()
+        .unwrap();
+    assert_eq!(stderr, actual_stderr);
+}
+
 /// Checks that the weights are assigned in the correct order
 #[rstest]
+#[case::close_open(
+    "[weights]\nclose_open = 1000000",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 close/open
+"
+)]
+#[case::write(
+    "[weights]\nwrite = 1000000",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 write    0x18004 .. 0x1a03a ( 0x2037 bytes)
+"
+)]
+#[case::mapwrite(
+    "[weights]\nmapwrite = 1000000",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 mapwrite 0x18004 .. 0x1a03a ( 0x2037 bytes)
+"
+)]
+#[case::truncate(
+    "[weights]\ntruncate = 1000000",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 truncate     0x0 => 0x11184
+"
+)]
 #[case::fsync(
-    "fsync",
+    "[weights]\nfsync = 1000000",
     "[INFO  fsx] Using seed 200
 [INFO  fsx] 1 fsync
 "
 )]
 #[case::fdatasync(
-    "fdatasync",
+    "[weights]\nfdatasync = 1000000",
     "[INFO  fsx] Using seed 200
 [INFO  fsx] 1 fdatasync
 "
 )]
-fn weights(#[case] op: &str, #[case] stderr: &str) {
+fn weights(#[case] wconf: &str, #[case] stderr: &str) {
     let mut cf = NamedTempFile::new().unwrap();
-    let conf = format!("[weights]\n{op} = 1000000");
-    cf.write_all(conf.as_bytes()).unwrap();
+    cf.write_all(wconf.as_bytes()).unwrap();
 
     let tf = NamedTempFile::new().unwrap();
 

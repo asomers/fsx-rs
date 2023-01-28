@@ -87,3 +87,10 @@ fdatasync = 1
 # NB: not all file systems are capable of supporting this operation.
 # Default: 0
 posix_fallocate = 0
+
+# Hole punching
+# FreeBSD: fspacectl()
+# Linux: fallocate(_, FALLOC_FL_PUNCH_HOLE, _, _)
+# Others: not supported
+# Default: 0
+punch_hole = 0

@@ -311,6 +311,8 @@ struct Weights {
     fdatasync:       f64,
     #[serde(default)]
     posix_fallocate: f64,
+    #[serde(default)]
+    punch_hole:      f64,
 }
 
 impl Default for Weights {
@@ -326,6 +328,7 @@ impl Default for Weights {
             fsync:           0.0,
             fdatasync:       0.0,
             posix_fallocate: 0.0,
+            punch_hole:      0.0,
         }
     }
 }
@@ -342,6 +345,7 @@ enum Op {
     Fsync,
     Fdatasync,
     PosixFallocate,
+    PunchHole,
 }
 
 impl Op {
@@ -349,7 +353,7 @@ impl Op {
     where
         I: IntoIterator<Item = f64> + ExactSizeIterator,
     {
-        assert_eq!(weights.len(), 10);
+        assert_eq!(weights.len(), 11);
         WeightedIndex::new(weights).unwrap()
     }
 }
@@ -367,6 +371,7 @@ impl fmt::Display for Op {
             Op::Fsync => "fsync".fmt(f),
             Op::Fdatasync => "fdatasync".fmt(f),
             Op::PosixFallocate => "posix_fallocate".fmt(f),
+            Op::PunchHole => "punch_hole".fmt(f),
         }
     }
 }
@@ -384,6 +389,7 @@ impl Distribution<Op> for WeightedIndex<f64> {
             7 => Op::Fsync,
             8 => Op::Fdatasync,
             9 => Op::PosixFallocate,
+            10 => Op::PunchHole,
             _ => panic!("WeightedIndex was generated with too many keys"),
         }
     }
@@ -408,6 +414,8 @@ enum LogEntry {
     Fdatasync,
     // offset, len
     PosixFallocate(u64, u64),
+    // offset, len
+    PunchHole(u64, u64),
 }
 
 struct Exerciser {
@@ -770,6 +778,19 @@ impl Exerciser {
                         fwidth = self.fwidth
                     );
                 }
+                LogEntry::PunchHole(offset, len) => {
+                    error!(
+                        "{:stepwidth$} PUNCH_HOLE {:#fwidth$x} => \
+                         {:#fwidth$x} ({:#swidth$x} bytes)",
+                        i,
+                        offset,
+                        offset + len - 1,
+                        len,
+                        stepwidth = self.stepwidth,
+                        swidth = self.swidth,
+                        fwidth = self.fwidth
+                    );
+                }
             }
             i += 1;
         }
@@ -1090,6 +1111,19 @@ impl Exerciser {
                 size -= size % self.align;
                 self.posix_fallocate(offset, size as u64)
             }
+            Op::PunchHole => {
+                offset = if self.file_size > 0 {
+                    offset % self.file_size
+                } else {
+                    0
+                };
+                offset -= offset % self.align as u64;
+                if offset + size as u64 > self.file_size {
+                    size = usize::try_from(self.file_size - offset).unwrap();
+                }
+                size -= size % self.align;
+                self.punch_hole(offset, size as u64)
+            }
         }
         if self.steps > self.simulatedopcount {
             self.check_size();
@@ -1143,6 +1177,68 @@ impl Exerciser {
             Err(e) => {
                 eprintln!("posix_fallocate unexpectedly failed with {e}");
                 self.fail();
+            }
+        }
+    }
+
+    fn punch_hole(&mut self, offset: u64, len: u64) {
+        assert!(offset + len <= self.file_size);
+        safemem::write_bytes(
+            &mut self.good_buf[offset as usize..(offset + len) as usize],
+            0,
+        );
+        self.oplog.push(LogEntry::PunchHole(offset, len));
+
+        if self.skip() {
+            return;
+        }
+
+        // XXX Should not log at WARN if size < self.monitor.0 and
+        // self.file_size < self.monitor.0.  But the C-based implementation
+        // does.
+        let mut loglevel = Level::Info;
+        if let Some((_, end)) = self.monitor {
+            if len <= end {
+                loglevel = Level::Warn;
+            }
+        }
+        log!(
+            loglevel,
+            "{:stepwidth$} punch_hole {:#fwidth$x} .. {:#fwidth$x} \
+             ({:#swidth$x} bytes)",
+            self.steps,
+            offset,
+            offset + len - 1,
+            len,
+            stepwidth = self.stepwidth,
+            fwidth = self.fwidth,
+            swidth = self.swidth
+        );
+        cfg_if! {
+            if #[cfg(have_fspacectl)] {
+                nix::fcntl::fspacectl_all(
+                    self.file.as_raw_fd(),
+                    offset as i64,
+                    len as i64
+                ).unwrap();
+            } else if #[cfg(any(
+                    target_os = "android",
+                    target_os = "emscripten",
+                    target_os = "fuchsia",
+                    target_os = "linux",
+                ))] {
+                use nix::fcntl::FallocateFlags;
+
+                nix::fcntl::fallocate(
+                    self.file.as_raw_fd(),
+                    FallocateFlags::FALLOC_FL_PUNCH_HOLE |
+                        FallocateFlags::FALLOC_FL_KEEP_SIZE,
+                    offset as i64,
+                    len as i64
+                ).unwrap();
+            } else {
+                eprintln!("hole punching is not supported on this platform.");
+                process::exit(1);
             }
         }
     }
@@ -1254,6 +1350,7 @@ impl Exerciser {
                 conf.weights.fsync,
                 conf.weights.fdatasync,
                 conf.weights.posix_fallocate,
+                conf.weights.punch_hole,
             ]
             .into_iter(),
         );

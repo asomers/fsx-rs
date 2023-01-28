@@ -575,3 +575,50 @@ fn posix_fallocate() {
         }
     }
 }
+
+#[cfg_attr(
+    not(any(
+        have_fspacectl,
+        target_os = "android",
+        target_os = "emscripten",
+        target_os = "fuchsia",
+        target_os = "linux"
+    )),
+    ignore
+)]
+#[test]
+fn punch_hole() {
+    let mut cf = NamedTempFile::new().unwrap();
+    cf.write_all(
+        b"[weights]\npunch_hole=10\nmapread=0\nmapwrite=0\ntruncate=0",
+    )
+    .unwrap();
+
+    let tf = NamedTempFile::new().unwrap();
+
+    let cmd = Command::cargo_bin("fsx")
+        .unwrap()
+        .env("RUST_LOG", "debug")
+        .args(["-S", "301", "-N", "10", "-P", "/tmp", "-f"])
+        .arg(cf.path())
+        .arg(tf.path())
+        .assert()
+        .success();
+    let actual_stderr = CString::new(cmd.get_output().stderr.clone())
+        .unwrap()
+        .into_string()
+        .unwrap();
+    let expected: &str = "[INFO  fsx] Using seed 301
+[INFO  fsx]  1 write    0x31a71 .. 0x32208 (  0x798 bytes)
+[INFO  fsx]  2 write    0x1b01b .. 0x2a456 ( 0xf43c bytes)
+[INFO  fsx]  3 read     0x2a547 .. 0x32208 ( 0x7cc2 bytes)
+[INFO  fsx]  4 punch_hole  0xe1a3 .. 0x1a7bb ( 0xc619 bytes)
+[INFO  fsx]  5 read      0x2df9 .. 0x11e7c ( 0xf084 bytes)
+[INFO  fsx]  6 punch_hole 0x2794a .. 0x32208 ( 0xa8bf bytes)
+[INFO  fsx]  7 write    0x2a1af .. 0x2a72c (  0x57e bytes)
+[INFO  fsx]  8 read     0x1eba8 .. 0x21a49 ( 0x2ea2 bytes)
+[INFO  fsx]  9 read     0x2298f .. 0x2bf0a ( 0x957c bytes)
+[INFO  fsx] 10 punch_hole  0x6e88 ..  0xac44 ( 0x3dbd bytes)
+";
+    assert_eq!(expected, actual_stderr);
+}

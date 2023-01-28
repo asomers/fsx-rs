@@ -1,5 +1,5 @@
 // vim: tw=80
-use std::{ffi::CString, fs, process::Command};
+use std::{ffi::CString, fs, io::Write, process::Command};
 
 use assert_cmd::prelude::*;
 use pretty_assertions::assert_eq;
@@ -12,263 +12,275 @@ use tempfile::{NamedTempFile, TempDir};
 // Equivalent to C's fsx -N 10 -S 4 -o 65536 -O.  Includes both MapRead
 // and MapWrite.
 #[case::sixtyfourk_ops(
-    "-O -N10 -S 4",
-    "[INFO  fsx] Using seed 4
-[INFO  fsx]  1 write    0x35b79 .. 0x3ffff ( 0xa487 bytes)
-[INFO  fsx]  2 write    0x2c014 .. 0x3c013 (0x10000 bytes)
-[INFO  fsx]  3 read     0x1abd3 .. 0x2abd2 (0x10000 bytes)
-[INFO  fsx]  4 write    0x2ccb1 .. 0x3ccb0 (0x10000 bytes)
-[INFO  fsx]  5 mapwrite 0x3e3b0 .. 0x3ffff ( 0x1c50 bytes)
-[INFO  fsx]  6 mapread   0xcb52 .. 0x1cb51 (0x10000 bytes)
-[INFO  fsx]  7 write    0x3b714 .. 0x3ffff ( 0x48ec bytes)
-[INFO  fsx]  8 mapread  0x11e77 .. 0x21e76 (0x10000 bytes)
-[INFO  fsx]  9 write     0xc8d9 .. 0x1c8d8 (0x10000 bytes)
-[INFO  fsx] 10 write     0x6940 .. 0x1693f (0x10000 bytes)
+    "[opsize]
+     min = 65536
+     max = 65536",
+    "-N10 -S 2",
+    "[INFO  fsx] Using seed 2
+[INFO  fsx]  1 mapwrite 0x17dbf .. 0x27dbe (0x10000 bytes)
+[INFO  fsx]  2 read     0x216ce .. 0x27dbe ( 0x66f1 bytes)
+[INFO  fsx]  3 write    0x2309f .. 0x3309e (0x10000 bytes)
+[INFO  fsx]  4 read     0x1ba2b .. 0x2ba2a (0x10000 bytes)
+[INFO  fsx]  5 mapread   0xf8f5 .. 0x1f8f4 (0x10000 bytes)
+[INFO  fsx]  6 write    0x196ff .. 0x296fe (0x10000 bytes)
+[INFO  fsx]  7 mapread  0x32da7 .. 0x3309e (  0x2f8 bytes)
+[INFO  fsx]  8 truncate 0x3309f => 0x2eb10
+[INFO  fsx]  9 mapwrite 0x3c53a .. 0x3ffff ( 0x3ac6 bytes)
+[INFO  fsx] 10 mapwrite 0x119bb .. 0x219ba (0x10000 bytes)
 "
 )]
-// Equivalent to C's fsx -N 10 -S 4 -o 65536 -O -RW.  Disables mmapped read and
+// Equivalent to C's fsx -N 10 -S 2 -o 65536 -O -RW.  Disables mmapped read and
 // write.
 #[case::no_mmap(
-    "-O -N10 -RW -S 4",
-    "[INFO  fsx] Using seed 4
-[DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 truncate     0x0 => 0x2c014
-[INFO  fsx]  3 write    0x1abd3 .. 0x2abd2 (0x10000 bytes)
-[INFO  fsx]  4 read     0x19db5 .. 0x29db4 (0x10000 bytes)
-[INFO  fsx]  5 truncate 0x2c014 => 0x3e3b0
-[INFO  fsx]  6 read     0x33082 .. 0x3e3af ( 0xb32e bytes)
-[INFO  fsx]  7 read     0x13354 .. 0x23353 (0x10000 bytes)
-[INFO  fsx]  8 read     0x23bb7 .. 0x33bb6 (0x10000 bytes)
-[INFO  fsx]  9 read     0x395a9 .. 0x3e3af ( 0x4e07 bytes)
-[INFO  fsx] 10 read      0x7390 .. 0x1738f (0x10000 bytes)
+    "[opsize]
+     min = 65536
+     max = 65536
+     [weights]
+     mapread = 0
+     mapwrite = 0
+     read = 1
+     write = 1
+     truncate = 1",
+    "-N10 -S 2",
+    "[INFO  fsx] Using seed 2
+[INFO  fsx]  1 truncate     0x0 => 0x32aab
+[INFO  fsx]  2 truncate 0x32aab =>  0xf651
+[INFO  fsx]  3 truncate  0xf651 => 0x19f9c
+[INFO  fsx]  4 write    0x2ba51 .. 0x3ba50 (0x10000 bytes)
+[INFO  fsx]  5 write    0x2147b .. 0x3147a (0x10000 bytes)
+[INFO  fsx]  6 truncate 0x3ba51 =>  0x7315
+[INFO  fsx]  7 write    0x14b4f .. 0x24b4e (0x10000 bytes)
+[INFO  fsx]  8 read      0xee93 .. 0x1ee92 (0x10000 bytes)
+[INFO  fsx]  9 write    0x3f395 .. 0x3ffff (  0xc6b bytes)
+[INFO  fsx] 10 write    0x3c53a .. 0x3ffff ( 0x3ac6 bytes)
 "
 )]
-// Equivalent to C's fsx -N 10 -d -S 6 -o 65536 -O.  Includes both truncate
+// Equivalent to C's fsx -N 10 -d -S 9 -o 65536 -O.  Includes both truncate
 // down and truncate up.
 #[case::truncate(
-    "-O -N10 -S 6",
-    "[INFO  fsx] Using seed 6
-[INFO  fsx]  1 write     0xb97f .. 0x1b97e (0x10000 bytes)
-[INFO  fsx]  2 mapwrite 0x1aa09 .. 0x2aa08 (0x10000 bytes)
-[INFO  fsx]  3 truncate 0x2aa09 => 0x35509
-[INFO  fsx]  4 read     0x11024 .. 0x21023 (0x10000 bytes)
-[INFO  fsx]  5 mapread  0x296a0 .. 0x35508 ( 0xbe69 bytes)
-[INFO  fsx]  6 truncate 0x35509 => 0x2d7a2
-[INFO  fsx]  7 write    0x2c959 .. 0x3c958 (0x10000 bytes)
-[INFO  fsx]  8 write    0x3b513 .. 0x3ffff ( 0x4aed bytes)
-[INFO  fsx]  9 read     0x1c693 .. 0x2c692 (0x10000 bytes)
-[INFO  fsx] 10 mapread   0xfc15 .. 0x1fc14 (0x10000 bytes)
+    "[opsize]
+     min = 65536
+     max = 65536",
+    "-N10 -S 9",
+    "[INFO  fsx] Using seed 9
+[DEBUG fsx]  1 skipping zero size read
+[INFO  fsx]  2 truncate     0x0 => 0x2423e
+[INFO  fsx]  3 mapwrite 0x2b9f0 .. 0x3b9ef (0x10000 bytes)
+[INFO  fsx]  4 truncate 0x3b9f0 => 0x12104
+[INFO  fsx]  5 write    0x3a59d .. 0x3ffff ( 0x5a63 bytes)
+[INFO  fsx]  6 mapwrite  0x138b .. 0x1138a (0x10000 bytes)
+[INFO  fsx]  7 mapread  0x334c8 .. 0x3ffff ( 0xcb38 bytes)
+[INFO  fsx]  8 mapread   0x4d50 .. 0x14d4f (0x10000 bytes)
+[INFO  fsx]  9 read     0x3c386 .. 0x3ffff ( 0x3c7a bytes)
+[INFO  fsx] 10 mapread  0x3ebc3 .. 0x3ffff ( 0x143d bytes)
 "
 )]
 // Equivalent to C's fsx -b 100 -N 110 -S 4 -o 65536 -O. Uses "-b"
 #[case::opnum(
-    "-O -N 110 -b 100 -S 4",
+    "[opsize]
+     min = 65536
+     max = 65536",
+    "-N 110 -b 100 -S 4",
     "[INFO  fsx] Using seed 4
-[INFO  fsx] 100 mapwrite   0x6a1 .. 0x106a0 (0x10000 bytes)
-[INFO  fsx] 101 read     0x2ae4a .. 0x3ae49 (0x10000 bytes)
-[INFO  fsx] 102 write    0x11f35 .. 0x21f34 (0x10000 bytes)
-[INFO  fsx] 103 mapread  0x2083b .. 0x3083a (0x10000 bytes)
-[INFO  fsx] 104 write     0x9c86 .. 0x19c85 (0x10000 bytes)
-[INFO  fsx] 105 mapread  0x1a80d .. 0x2a80c (0x10000 bytes)
-[INFO  fsx] 106 truncate 0x3e589 => 0x25a3c
-[INFO  fsx] 107 read      0x16c3 .. 0x116c2 (0x10000 bytes)
-[INFO  fsx] 108 mapwrite 0x1ba38 .. 0x2ba37 (0x10000 bytes)
-[INFO  fsx] 109 truncate 0x2ba38 => 0x2e53c
-[INFO  fsx] 110 mapwrite 0x124ae .. 0x224ad (0x10000 bytes)
+[DEBUG fsx]   1 skipping zero size read
+[DEBUG fsx]   2 skipping zero size read
+[DEBUG fsx]   3 skipping zero size read
+[DEBUG fsx]   4 skipping zero size read
+[DEBUG fsx]   5 skipping zero size read
+[DEBUG fsx]   6 skipping zero size read
+[INFO  fsx] 100 truncate 0x2b4f5 =>  0xb098
+[INFO  fsx] 101 read      0xa71b ..  0xb097 (  0x97d bytes)
+[INFO  fsx] 102 mapread   0x7b34 ..  0xb097 ( 0x3564 bytes)
+[INFO  fsx] 103 mapwrite 0x1dc30 .. 0x2dc2f (0x10000 bytes)
+[INFO  fsx] 104 mapread  0x21f8c .. 0x2dc2f ( 0xbca4 bytes)
+[INFO  fsx] 105 read     0x23629 .. 0x2dc2f ( 0xa607 bytes)
+[INFO  fsx] 106 mapwrite  0x8dd8 .. 0x18dd7 (0x10000 bytes)
+[INFO  fsx] 107 mapread   0x8b44 .. 0x18b43 (0x10000 bytes)
+[INFO  fsx] 108 mapread   0x9f4b .. 0x19f4a (0x10000 bytes)
+[INFO  fsx] 109 mapread  0x27b0b .. 0x2dc2f ( 0x6125 bytes)
+[INFO  fsx] 110 truncate 0x2dc30 => 0x35f5f
 "
 )]
 // Equivalent to C's fsx -N 2 -S 13 -o 65536 -O -c 2
 // Exercises closeopen
 #[case::closeopen(
-    "-O -N 2 -S 13 -c 2",
+    "[opsize]
+     min = 65536
+     max = 65536
+     [weights]
+     close_open = 100",
+    "-N 1 -S 13",
     "[INFO  fsx] Using seed 13
-[INFO  fsx] 1 mapwrite  0x1781 .. 0x11780 (0x10000 bytes)
 [INFO  fsx] 1 close/open
-[INFO  fsx] 2 read      0xf512 .. 0x11780 ( 0x226f bytes)
-[INFO  fsx] 2 close/open
 "
 )]
 // Equivalent to C's fsx -N 2 -S 20
 // Uses random oplen
 #[case::baseline(
+    "",
     "-N10 -S 20",
     "[INFO  fsx] Using seed 20
 [DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 write    0x19f18 .. 0x249f6 ( 0xaadf bytes)
-[INFO  fsx]  3 write    0x3a8ba .. 0x3f983 ( 0x50ca bytes)
-[INFO  fsx]  4 mapwrite 0x17b18 .. 0x1be26 ( 0x430f bytes)
-[INFO  fsx]  5 write    0x314db .. 0x3e9a7 ( 0xd4cd bytes)
-[INFO  fsx]  6 write    0x3ac28 .. 0x3ffff ( 0x53d8 bytes)
-[INFO  fsx]  7 truncate 0x40000 =>  0x54f7
-[INFO  fsx]  8 mapread   0x1d79 ..  0x54f6 ( 0x377e bytes)
-[INFO  fsx]  9 truncate  0x54f7 => 0x24268
-[INFO  fsx] 10 read     0x1110e .. 0x12858 ( 0x174b bytes)
+[DEBUG fsx]  2 skipping zero size read
+[INFO  fsx]  3 write    0x202a1 .. 0x20407 (  0x167 bytes)
+[INFO  fsx]  4 write     0x6798 ..  0xcb41 ( 0x63aa bytes)
+[INFO  fsx]  5 truncate 0x20408 => 0x2442d
+[INFO  fsx]  6 write    0x20d0c .. 0x27672 ( 0x6967 bytes)
+[INFO  fsx]  7 read      0x2f75 ..  0xfb0b ( 0xcb97 bytes)
+[INFO  fsx]  8 mapread  0x24f47 .. 0x27672 ( 0x272c bytes)
+[INFO  fsx]  9 write    0x1c0c3 .. 0x2ac4f ( 0xeb8d bytes)
+[INFO  fsx] 10 mapwrite  0x6ed1 ..  0xcc12 ( 0x5d42 bytes)
 "
 )]
 // Equivalent to C's fsx -N 10 -S 20 -U
 // Exercises -U, though that doesn't change the output
 #[case::nomsyncafterwrite(
-    "-N10 -S20 -U",
+    "nomsyncafterwrite = true",
+    "-N10 -S20",
     "[INFO  fsx] Using seed 20
 [DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 write    0x19f18 .. 0x249f6 ( 0xaadf bytes)
-[INFO  fsx]  3 write    0x3a8ba .. 0x3f983 ( 0x50ca bytes)
-[INFO  fsx]  4 mapwrite 0x17b18 .. 0x1be26 ( 0x430f bytes)
-[INFO  fsx]  5 write    0x314db .. 0x3e9a7 ( 0xd4cd bytes)
-[INFO  fsx]  6 write    0x3ac28 .. 0x3ffff ( 0x53d8 bytes)
-[INFO  fsx]  7 truncate 0x40000 =>  0x54f7
-[INFO  fsx]  8 mapread   0x1d79 ..  0x54f6 ( 0x377e bytes)
-[INFO  fsx]  9 truncate  0x54f7 => 0x24268
-[INFO  fsx] 10 read     0x1110e .. 0x12858 ( 0x174b bytes)
+[DEBUG fsx]  2 skipping zero size read
+[INFO  fsx]  3 write    0x202a1 .. 0x20407 (  0x167 bytes)
+[INFO  fsx]  4 write     0x6798 ..  0xcb41 ( 0x63aa bytes)
+[INFO  fsx]  5 truncate 0x20408 => 0x2442d
+[INFO  fsx]  6 write    0x20d0c .. 0x27672 ( 0x6967 bytes)
+[INFO  fsx]  7 read      0x2f75 ..  0xfb0b ( 0xcb97 bytes)
+[INFO  fsx]  8 mapread  0x24f47 .. 0x27672 ( 0x272c bytes)
+[INFO  fsx]  9 write    0x1c0c3 .. 0x2ac4f ( 0xeb8d bytes)
+[INFO  fsx] 10 mapwrite  0x6ed1 ..  0xcc12 ( 0x5d42 bytes)
 "
 )]
 // Equivalent to C's fsx -N 10 -S 30 -o 4096
-// Exercises -o
+// Exercises opsize.max
 #[case::oplen(
-    "-N 10 -S 30 -o 4096",
+    "[opsize]
+     min = 0
+     max = 4096",
+    "-N 10 -S 30",
     "[INFO  fsx] Using seed 30
-[INFO  fsx]  1 write     0x7f70 ..  0x8ed0 ( 0xf61 bytes)
-[INFO  fsx]  2 mapread    0xc62 ..  0x1794 ( 0xb33 bytes)
-[INFO  fsx]  3 write    0x16a35 .. 0x179b4 ( 0xf80 bytes)
-[INFO  fsx]  4 truncate 0x179b5 => 0x146fb
-[INFO  fsx]  5 truncate 0x146fb =>  0x6d78
-[INFO  fsx]  6 write    0x271bd .. 0x27bca ( 0xa0e bytes)
-[INFO  fsx]  7 mapread  0x137f0 .. 0x13a45 ( 0x256 bytes)
-[INFO  fsx]  8 write     0xe378 ..  0xe3d2 (  0x5b bytes)
-[INFO  fsx]  9 truncate 0x27bcb => 0x2b910
-[INFO  fsx] 10 mapread  0x28200 .. 0x28b28 ( 0x929 bytes)
+[INFO  fsx]  1 mapwrite 0x21c83 .. 0x2232d ( 0x6ab bytes)
+[INFO  fsx]  2 mapread  0x115e9 .. 0x11da7 ( 0x7bf bytes)
+[INFO  fsx]  3 truncate 0x2232e => 0x16494
+[INFO  fsx]  4 write    0x2568f .. 0x263da ( 0xd4c bytes)
+[INFO  fsx]  5 mapread   0xaa7c ..  0xb5fe ( 0xb83 bytes)
+[INFO  fsx]  6 write    0x108ee .. 0x10dae ( 0x4c1 bytes)
+[INFO  fsx]  7 read      0xf806 ..  0xfd1a ( 0x515 bytes)
+[INFO  fsx]  8 truncate 0x263db => 0x1a27d
+[INFO  fsx]  9 mapwrite 0x17b4b .. 0x18934 ( 0xdea bytes)
+[INFO  fsx] 10 mapread   0x9a99 ..  0xa000 ( 0x568 bytes)
 "
 )]
-// Equivalent to C's fsx -N 10 -S 40 -l 1048576
-// Exercises -l
+// Equivalent to C's fsx -N 10 -S 50 -l 1048576
+// Exercises flen
 #[case::flen(
-    "-N 10 -S 40 -l 1048576",
-    "[INFO  fsx] Using seed 40
+    "flen = 1048576",
+    "-N 10 -S 56",
+    "[INFO  fsx] Using seed 56
 [DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 write     0x1e6f6 ..  0x23555 ( 0x4e60 bytes)
-[INFO  fsx]  3 truncate  0x23556 =>  0x3b953
-[INFO  fsx]  4 mapread   0x39db2 ..  0x3b952 ( 0x1ba1 bytes)
-[INFO  fsx]  5 mapread    0xaed5 ..   0xe87b ( 0x39a7 bytes)
-[INFO  fsx]  6 mapwrite  0x18e47 ..  0x23a83 ( 0xac3d bytes)
-[INFO  fsx]  7 write     0xf8d72 ..  0xfffff ( 0x728e bytes)
-[INFO  fsx]  8 read      0x25453 ..  0x2e0be ( 0x8c6c bytes)
-[INFO  fsx]  9 read      0x6d53b ..  0x6f500 ( 0x1fc6 bytes)
-[INFO  fsx] 10 truncate 0x100000 =>  0xe57a5
+[INFO  fsx]  2 write     0xcfb9a ..  0xdc46b ( 0xc8d2 bytes)
+[INFO  fsx]  3 mapwrite  0xff116 ..  0xfffff (  0xeea bytes)
+[INFO  fsx]  4 mapread   0x9a519 ..  0xa7667 ( 0xd14f bytes)
+[INFO  fsx]  5 write      0xa51a ..   0xf359 ( 0x4e40 bytes)
+[INFO  fsx]  6 read      0xcb8e3 ..  0xd5a23 ( 0xa141 bytes)
+[INFO  fsx]  7 read      0x24dfa ..  0x2abd5 ( 0x5ddc bytes)
+[INFO  fsx]  8 write       0x5fb ..   0x30f9 ( 0x2aff bytes)
+[INFO  fsx]  9 truncate 0x100000 =>  0xaf4f4
+[INFO  fsx] 10 read      0x609f2 ..  0x65b0c ( 0x511b bytes)
 "
 )]
 // Equivalent to C's fsx -N 10 -S 42 -N 10 -i 2
 // Exercises -i
 #[case::inval(
-    "-N 10 -S 42 -i 2",
+    "[weights]
+    invalidate = 10",
+    "-N 10 -S 42",
     "[INFO  fsx] Using seed 42
-[INFO  fsx]  1 write    0x32c3c .. 0x3d016 ( 0xa3db bytes)
-[INFO  fsx]  1 msync(MS_INVALIDATE)
-[INFO  fsx]  2 truncate 0x3d017 =>  0x1cbe
-[INFO  fsx]  2 msync(MS_INVALIDATE)
-[INFO  fsx]  3 write     0x8117 .. 0x1107e ( 0x8f68 bytes)
-[INFO  fsx]  4 mapread   0x928d ..  0xb356 ( 0x20ca bytes)
-[INFO  fsx]  4 msync(MS_INVALIDATE)
-[INFO  fsx]  5 write    0x1f8e2 .. 0x2bf33 ( 0xc652 bytes)
-[INFO  fsx]  6 truncate 0x2bf34 => 0x37187
-[INFO  fsx]  7 mapread  0x26120 .. 0x2da28 ( 0x7909 bytes)
-[INFO  fsx]  8 mapread  0x21dc5 .. 0x312d9 ( 0xf515 bytes)
-[INFO  fsx]  9 mapread   0x4c8a .. 0x13746 ( 0xeabd bytes)
-[INFO  fsx] 10 write    0x24538 .. 0x31d46 ( 0xd80f bytes)
+[DEBUG fsx]  1 skipping zero size read
+[DEBUG fsx]  2 skipping invalidate of zero-length file
+[DEBUG fsx]  3 skipping zero size read
+[INFO  fsx]  4 truncate     0x0 => 0x2e4c0
+[INFO  fsx]  5 msync(MS_INVALIDATE)
+[INFO  fsx]  6 truncate 0x2e4c0 => 0x3cad8
+[INFO  fsx]  7 read     0x3416a .. 0x3cad7 ( 0x896e bytes)
+[INFO  fsx]  8 mapread  0x16b78 .. 0x18c4b ( 0x20d4 bytes)
+[INFO  fsx]  9 mapread  0x2cf1c .. 0x32605 ( 0x56ea bytes)
+[INFO  fsx] 10 mapread   0xd0c6 .. 0x12b21 ( 0x5a5c bytes)
 "
 )]
-// Equivalent to C's fsx -N 1 -i 1 -S 1
+// Equivalent to C's fsx -N 1 -i 1 -S 10
 // https://github.com/asomers/fsx-rs/issues/13
 #[case::mmap_underflow(
-    "-N 1 -S 1 -i 1",
-    "[INFO  fsx] Using seed 1
-[DEBUG fsx] 1 skipping zero size read
+    "[weights]
+    invalidate = 1000",
+    "-N 1 -S 10",
+    "[INFO  fsx] Using seed 10
 [DEBUG fsx] 1 skipping invalidate of zero-length file
 "
 )]
-// Equivalent to C's fsx -N 10 -S 45 -r 4096
+// Equivalent to C's fsx -N 10 -S 46 -r 4096
 // Exercises -r
-#[case::readbdy(
-    "-N 10 -S 45 -r 4096",
-    "[INFO  fsx] Using seed 45
-[DEBUG fsx]  1 skipping zero size read
-[INFO  fsx]  2 truncate     0x0 => 0x34c83
-[INFO  fsx]  3 read     0x1e000 .. 0x1e652 (  0x653 bytes)
-[INFO  fsx]  4 write    0x344f1 .. 0x35f5c ( 0x1a6c bytes)
-[INFO  fsx]  5 mapread  0x13000 .. 0x15dd6 ( 0x2dd7 bytes)
-[INFO  fsx]  6 mapwrite  0xb3b9 .. 0x1b0fe ( 0xfd46 bytes)
-[INFO  fsx]  7 mapwrite  0xa683 .. 0x16135 ( 0xbab3 bytes)
-[INFO  fsx]  8 write     0xac2f .. 0x104e4 ( 0x58b6 bytes)
-[INFO  fsx]  9 read      0x9000 ..  0xa762 ( 0x1763 bytes)
-[INFO  fsx] 10 truncate 0x35f5d =>  0x4206
-"
-)]
-// Equivalent to C's fsx -N 10 -S 46 -w 4096
-// Exercises -w
-#[case::writebdy(
-    "-N 10 -S 46 -w 4096",
+#[case::align(
+    "[opsize]
+    align = 4096",
+    "-N 10 -S 46",
     "[INFO  fsx] Using seed 46
-[INFO  fsx]  1 write    0x36000 .. 0x3d360 ( 0x7361 bytes)
-[INFO  fsx]  2 mapread  0x2ecf5 .. 0x348c6 ( 0x5bd2 bytes)
-[INFO  fsx]  3 mapwrite 0x13000 .. 0x1e5f4 ( 0xb5f5 bytes)
-[INFO  fsx]  4 write    0x30000 .. 0x309c9 (  0x9ca bytes)
-[INFO  fsx]  5 mapread  0x1f039 .. 0x2bc32 ( 0xcbfa bytes)
-[INFO  fsx]  6 write    0x2d000 .. 0x302d0 ( 0x32d1 bytes)
-[INFO  fsx]  7 mapread  0x1c26d .. 0x20d83 ( 0x4b17 bytes)
-[INFO  fsx]  8 truncate 0x3d361 => 0x2f688
-[INFO  fsx]  9 mapread  0x1eaa5 .. 0x245cf ( 0x5b2b bytes)
-[INFO  fsx] 10 mapwrite 0x3a000 .. 0x3f30c ( 0x530d bytes)
+[INFO  fsx]  1 mapwrite 0x2e000 .. 0x31fff ( 0x4000 bytes)
+[INFO  fsx]  2 write    0x18000 .. 0x1cfff ( 0x5000 bytes)
+[INFO  fsx]  3 read     0x1e000 .. 0x27fff ( 0xa000 bytes)
+[INFO  fsx]  4 mapread  0x1f000 .. 0x21fff ( 0x3000 bytes)
+[INFO  fsx]  5 truncate 0x32000 => 0x1180e
+[INFO  fsx]  6 read      0xd000 .. 0x10fff ( 0x4000 bytes)
+[INFO  fsx]  7 mapread   0x1000 ..  0xdfff ( 0xd000 bytes)
+[INFO  fsx]  8 mapwrite  0x9000 ..  0xafff ( 0x2000 bytes)
+[INFO  fsx]  9 read      0xc000 ..  0xdfff ( 0x2000 bytes)
+[INFO  fsx] 10 read     0x10000 .. 0x10fff ( 0x1000 bytes)
 "
 )]
-// Equivalent to C's fsx -N 4 -t 4096 -S 51
-// Exercises -t
-#[case::truncbdy(
-    "-N 4 -S 51 -t 4096",
-    "[INFO  fsx] Using seed 51
-[INFO  fsx] 1 truncate     0x0 => 0x16000
-[INFO  fsx] 2 truncate 0x16000 =>  0xe000
-[INFO  fsx] 3 read      0x94f5 ..  0xd455 ( 0x3f61 bytes)
-[INFO  fsx] 4 mapread   0x5b3b ..  0xdfff ( 0x84c5 bytes)
-"
-)]
-// Equivalent to C's fsx -N 10 -S 60 -m 32768:65536
+// Equivalent to C's fsx -N 10 -S 68 -m 32768:65536
 // Exercises -m
 #[case::monitor(
-    "-N 10 -S 60 -m 32768:65536",
-    "[INFO  fsx] Using seed 60
-[WARN  fsx]  1 truncate     0x0 =>  0x6f44
-[INFO  fsx]  2 read      0x19d0 ..  0x6f43 ( 0x5574 bytes)
-[INFO  fsx]  3 truncate  0x6f44 => 0x1f131
-[WARN  fsx]  4 mapread   0x7d00 .. 0x146f2 ( 0xc9f3 bytes)
-[WARN  fsx]  5 mapread   0x6a24 ..  0xa9ba ( 0x3f97 bytes)
-[WARN  fsx]  6 read      0x41c0 .. 0x13ec4 ( 0xfd05 bytes)
-[WARN  fsx]  7 truncate 0x1f131 =>  0xccfe
-[WARN  fsx]  8 write     0x9b8a ..  0xb6b8 ( 0x1b2f bytes)
-[INFO  fsx]  9 mapwrite 0x2a9a3 .. 0x30421 ( 0x5a7f bytes)
-[WARN  fsx] 10 mapread   0x7891 ..  0xc8c8 ( 0x5038 bytes)
+    "",
+    "-N 10 -S 68 -m 32768:65536",
+    "[INFO  fsx] Using seed 68
+[DEBUG fsx]  1 skipping zero size read
+[DEBUG fsx]  2 skipping zero size read
+[DEBUG fsx]  3 skipping zero size read
+[DEBUG fsx]  4 skipping zero size read
+[INFO  fsx]  5 write    0x127e6 .. 0x1730a ( 0x4b25 bytes)
+[INFO  fsx]  6 mapwrite 0x3a97f .. 0x3ffff ( 0x5681 bytes)
+[INFO  fsx]  7 truncate 0x40000 => 0x1a45e
+[WARN  fsx]  8 mapread   0x40f3 ..  0xe8fb ( 0xa809 bytes)
+[INFO  fsx]  9 write    0x1defe .. 0x2100e ( 0x3111 bytes)
+[WARN  fsx] 10 mapread   0x159c ..  0xed17 ( 0xd77c bytes)
 "
 )]
 // Equivalent to C's fsx -S 72 -L -N 10
 // Exercises -B
 #[case::blockmode(
-    "-B -S 72 -N 10 -P /tmp",
+    "blockmode = true
+    [weights]
+    truncate = 0",
+    "-S 72 -N 10 -P /tmp",
     "[INFO  fsx] Using seed 72
-[INFO  fsx]  1 write     0xc86d4 ..  0xd83ee ( 0xfd1b bytes)
-[INFO  fsx]  2 mapwrite  0xcbe82 ..  0xd1dfd ( 0x5f7c bytes)
-[INFO  fsx]  3 mapread   0xfde25 ..  0xfffff ( 0x21db bytes)
-[INFO  fsx]  4 mapread   0xb3100 ..  0xb5576 ( 0x2477 bytes)
-[INFO  fsx]  5 mapread   0x84705 ..  0x94114 ( 0xfa10 bytes)
-[INFO  fsx]  6 mapread   0x3fa22 ..  0x49c78 ( 0xa257 bytes)
-[INFO  fsx]  7 write     0xecace ..  0xf0902 ( 0x3e35 bytes)
-[INFO  fsx]  8 write     0x59439 ..  0x6165b ( 0x8223 bytes)
-[INFO  fsx]  9 mapread   0x28794 ..  0x2b63e ( 0x2eab bytes)
-[INFO  fsx] 10 mapwrite  0xb578d ..  0xb70cc ( 0x1940 bytes)
+[INFO  fsx]  1 write     0xc0405 ..  0xc2ac7 ( 0x26c3 bytes)
+[INFO  fsx]  2 mapwrite  0x77eb8 ..  0x78c78 (  0xdc1 bytes)
+[INFO  fsx]  3 read      0x323d0 ..  0x37cd9 ( 0x590a bytes)
+[INFO  fsx]  4 read      0xb8dbb ..  0xc2342 ( 0x9588 bytes)
+[INFO  fsx]  5 read      0x45efa ..  0x4d083 ( 0x718a bytes)
+[INFO  fsx]  6 mapwrite  0x926be ..  0xa06d8 ( 0xe01b bytes)
+[INFO  fsx]  7 mapwrite  0x2656c ..  0x35a66 ( 0xf4fb bytes)
+[INFO  fsx]  8 mapread   0xb3066 ..  0xb9a9c ( 0x6a37 bytes)
+[INFO  fsx]  9 mapread   0x7296b ..  0x7b6f8 ( 0x8d8e bytes)
+[INFO  fsx] 10 read      0x58941 ..  0x5b149 ( 0x2809 bytes)
 "
 )]
-#[cfg_attr(not(target_os = "freebsd"), ignore)] // Depends on exact PRNG output
-fn stability(#[case] args: &str, #[case] stderr: &str) {
+fn stability(#[case] conf: &str, #[case] args: &str, #[case] stderr: &str) {
+    let mut cf = NamedTempFile::new().unwrap();
+    cf.write_all(conf.as_bytes()).unwrap();
+
     let mut tf = NamedTempFile::new().unwrap();
 
-    if args.contains("-B") {
+    if conf.contains("blockmode = true") {
         // When using -B, must manually set file size before starting program
         // Set flen higher than default
         // https://github.com/asomers/fsx-rs/issues/13
@@ -279,6 +291,8 @@ fn stability(#[case] args: &str, #[case] stderr: &str) {
         .unwrap()
         .env("RUST_LOG", "debug")
         .args(args.split_ascii_whitespace())
+        .arg("-f")
+        .arg(cf.path())
         .arg(tf.path())
         .assert()
         .success();
@@ -286,7 +300,7 @@ fn stability(#[case] args: &str, #[case] stderr: &str) {
         .unwrap()
         .into_string()
         .unwrap();
-    assert_eq!(actual_stderr, stderr);
+    assert_eq!(stderr, actual_stderr);
 }
 
 #[cfg_attr(not(target_os = "freebsd"), allow(unused))]
@@ -297,7 +311,7 @@ fn miscompare() {
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
         .env("RUST_LOG", "debug")
-        .args(["-N10", "-S6", "--inject", "5"])
+        .args(["-N10", "-S10", "--inject", "3"])
         .arg(tf.path())
         .assert()
         .failure();
@@ -308,27 +322,23 @@ fn miscompare() {
             .into_string()
             .unwrap();
         assert_eq!(
-            actual_stderr,
-            "[INFO  fsx] Using seed 6
-[INFO  fsx]  1 write    0x21c37 .. 0x2d199 ( 0xb563 bytes)
-[INFO  fsx]  2 mapwrite 0x35509 .. 0x373de ( 0x1ed6 bytes)
-[INFO  fsx]  3 read     0x32a86 .. 0x373de ( 0x4959 bytes)
-[INFO  fsx]  4 mapread   0xbf7f .. 0x14c14 ( 0x8c96 bytes)
-[INFO  fsx]  6 read     0x16d69 .. 0x226d1 ( 0xb969 bytes)
-[INFO  fsx]  7 mapread  0x21125 .. 0x301cd ( 0xf0a9 bytes)
-[ERROR fsx] miscompare: offset= 0x21125, size = 0xf0a9
+            "[INFO  fsx] Using seed 10
+[DEBUG fsx]  1 skipping zero size read
+[INFO  fsx]  2 truncate     0x0 => 0x19efd
+[INFO  fsx]  4 truncate 0x19efd => 0x1cb67
+[INFO  fsx]  5 mapread   0xe279 .. 0x10931 ( 0x26b9 bytes)
+[ERROR fsx] miscompare: offset= 0xe279, size = 0x26b9
 [ERROR fsx] OFFSET  GOOD  BAD  RANGE  
-[ERROR fsx] 0x24dea 0x05 0x01  0x8942
-[ERROR fsx] Step# (mod 256) for a misdirected write may be 1
+[ERROR fsx]  0xe279 0xd1 0x00  0x26a9
+[ERROR fsx] Step# for the bad data is unknown; check HOLE and EXTEND ops
 [ERROR fsx] LOG DUMP
-[ERROR fsx]  0 WRITE    0x21c37 => 0x2d19a ( 0xb563 bytes) HOLE
-[ERROR fsx]  1 MAPWRITE 0x35509 => 0x373df ( 0x1ed6 bytes) HOLE
-[ERROR fsx]  2 READ     0x32a86 => 0x373df ( 0x4959 bytes)
-[ERROR fsx]  3 MAPREAD   0xbf7f => 0x14c15 ( 0x8c96 bytes)
-[ERROR fsx]  4 WRITE    0x24dea => 0x2d72d ( 0x8943 bytes)
-[ERROR fsx]  5 READ     0x16d69 => 0x226d2 ( 0xb969 bytes)
-[ERROR fsx]  6 MAPREAD  0x21125 => 0x301ce ( 0xf0a9 bytes)
-"
+[ERROR fsx]  0 SKIPPED  (read)
+[ERROR fsx]  1 TRUNCATE  UP   from     0x0 to 0x19efd
+[ERROR fsx]  2 WRITE     0xda28 => 0x14205 ( 0x67dd bytes)
+[ERROR fsx]  3 TRUNCATE  UP   from 0x19efd to 0x1cb67
+[ERROR fsx]  4 MAPREAD   0xe279 => 0x10932 ( 0x26b9 bytes)
+",
+            actual_stderr
         );
     }
     // There should be a .fsxgood artifact
@@ -350,7 +360,7 @@ fn artifacts_dir() {
     Command::cargo_bin("fsx")
         .unwrap()
         .env("RUST_LOG", "debug")
-        .args(["-N2", "-S2", "--inject", "1", "-P"])
+        .args(["-N2", "-S11", "--inject", "1", "-P"])
         .arg(artifacts_dir.path())
         .arg(tf.path())
         .assert()
@@ -372,15 +382,25 @@ fn artifacts_dir() {
 // https://github.com/asomers/fsx-rs/issues/20
 #[test]
 fn blockmode_zero() {
+    let mut cf = NamedTempFile::new().unwrap();
+    cf.write_all(
+        b"blockmode = true
+[weights]
+truncate = 0",
+    )
+    .unwrap();
+
     let tf = NamedTempFile::new().unwrap();
     let artifacts_dir = TempDir::new().unwrap();
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
         .env("RUST_LOG", "warn")
-        .args(["-B", "-N2", "-S72", "-P"])
+        .args(["-N2", "-S72", "-P"])
         .arg(artifacts_dir.path())
         .arg(tf.path())
+        .arg("-f")
+        .arg(cf.path())
         .assert()
         .failure();
 

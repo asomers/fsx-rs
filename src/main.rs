@@ -2,10 +2,10 @@
 use std::{
     ffi::OsStr,
     fmt,
-    fs::{File, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{Seek, SeekFrom, Write},
     mem,
-    num::NonZeroU64,
+    num::{NonZeroU64, NonZeroUsize},
     os::unix::{
         fs::FileExt,
         io::{AsRawFd, IntoRawFd},
@@ -29,16 +29,15 @@ use nix::{
     unistd::{sysconf, SysconfVar},
 };
 use rand::{
-    distributions::{Distribution, Standard},
+    distributions::{Distribution, WeightedIndex},
     thread_rng,
     Rng,
     RngCore,
     SeedableRng,
 };
+use rand_xorshift::XorShiftRng;
 use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
-
-mod prng;
-use prng::OsPRng;
+use serde_derive::Deserialize;
 
 /// Calculate the maximum field width needed to print numbers up to this size
 fn field_width(max: usize, hex: bool) -> usize {
@@ -95,59 +94,17 @@ struct Cli {
     #[arg(short = 'b', default_value_t = NonZeroU64::new(1u64).unwrap())]
     opnum: NonZeroU64,
 
-    /// 1/P chance of file close+open at each op [default infinity]
-    #[arg(short = 'c', value_name = "P")]
-    closeprob: Option<u32>,
-
-    /// 1/P chance of msync(MS_INVALIDATE) [default infinity]
-    #[arg(short = 'i', value_name = "P")]
-    invalprob: Option<u32>,
-
-    /// Maximum file size
-    // NB: could be u64, but the C-based FSX only works with 32-bit file sizes
-    #[arg(short = 'l', default_value_t = 256 * 1024)]
-    flen: u32,
+    /// Config file path
+    #[arg(short = 'f', value_name = "PATH")]
+    config: Option<PathBuf>,
 
     /// Monitor specified byte range
     #[arg(short = 'm', value_name = "FROM:TO", value_parser = MonitorParser{})]
     monitor: Option<(u64, u64)>,
 
-    /// Disable verifications of file size
-    #[arg(short = 'n')]
-    nosizechecks: bool,
-
-    /// Maximum size for operations
-    #[arg(short = 'o', default_value_t = 65536)]
-    oplen: usize,
-
-    /// Read boundary. 4k to make reads page aligned
-    #[arg(short = 'r', default_value_t = 1)]
-    readbdy: u64,
-
-    /// Trunc boundary. 4k to make truncs page aligned
-    #[arg(short = 't', default_value_t = 1)]
-    truncbdy: u64,
-
-    /// Write boundary. 4k to make writes page aligned
-    #[arg(short = 'w', default_value_t = 1)]
-    writebdy: u64,
-
-    /// Block mode: never change the file's size.
-    // Conflicts with options related to open/close, truncate, and file size
-    // Requires -P, so artifacts will be saved on a separate file system.
-    #[arg(short = 'B',
-          conflicts_with_all(["flen", "closeprob", "truncbdy"]),
-          requires("artifacts_dir")
-          )]
-    blockmode: bool,
-
     /// Total number of operations to do [default infinity]
     #[arg(short = 'N')]
     numops: Option<u64>,
-
-    /// Use oplen (see -o flag) for every op [default random]
-    #[arg(short = 'O')]
-    norandomoplen: bool,
 
     /// Save artifacts to this directory [default ./]
     #[arg(short = 'P', value_name = "DIRPATH")]
@@ -155,19 +112,7 @@ struct Cli {
 
     /// Seed for RNG
     #[arg(short = 'S')]
-    seed: Option<u32>,
-
-    /// Disable mmap writes
-    #[arg(short = 'W')]
-    nomapwrite: bool,
-
-    /// Disable mmap reads
-    #[arg(short = 'R')]
-    nomapread: bool,
-
-    /// Disable msync after mapwrite
-    #[arg(short = 'U', conflicts_with("nomapwrite"))]
-    nomsyncafterwrite: bool,
+    seed: Option<u64>,
 
     /// File name to operate on
     fname: PathBuf,
@@ -178,52 +123,231 @@ struct Cli {
     inject: Option<u64>,
 }
 
+const fn default_flen() -> u32 {
+    256 * 1024
+}
+
+/// Configuration file format, as toml
+#[derive(Debug, Deserialize)]
+struct Config {
+    /// Maximum file size
+    // NB: could be u64, but the C-based FSX only works with 32-bit file sizes
+    #[serde(default = "default_flen")]
+    flen: u32,
+
+    /// Disable verifications of file size
+    #[serde(default)]
+    nosizechecks: bool,
+
+    /// Block mode: never change the file's size.
+    #[serde(default)]
+    blockmode: bool,
+
+    /// Disable msync after mapwrite
+    #[serde(default)]
+    nomsyncafterwrite: bool,
+
+    /// Specifies size distribution for all operations
+    #[serde(default)]
+    opsize: Opsize,
+
+    /// Specifies relative statistical weights of all operations
+    #[serde(default)]
+    weights: Weights,
+}
+
+impl Config {
+    fn load(path: &PathBuf) -> Self {
+        let r = match fs::read_to_string(path) {
+            Ok(s) => toml::from_str(&s),
+            Err(e) => {
+                eprintln!("Error reading config file: {e}");
+                process::exit(1);
+            }
+        };
+        match r {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Error reading config file: {e}");
+                process::exit(1);
+            }
+        }
+    }
+
+    /// Validate compatibility with these CLI arguments
+    fn validate(&self, cli: &Cli) {
+        if self.flen == 0 {
+            eprintln!("error: file length must be greater than zero");
+            process::exit(2);
+        }
+        if self.opsize.max == 0 {
+            eprintln!(
+                "error: Maximum operation size must be greater than zero"
+            );
+            process::exit(2);
+        }
+        if self.opsize.min > self.opsize.max {
+            eprintln!(
+                "error: Minimum operation size must be no greater than maximum"
+            );
+            process::exit(2);
+        }
+        let align = self.opsize.align.map(usize::from).unwrap_or(1);
+        if align > self.opsize.max {
+            eprintln!(
+                "error: operation alignment must be no greater than maximum \
+                 operation size"
+            );
+            process::exit(2);
+        }
+        if self.blockmode && self.flen != default_flen() {
+            eprintln!("error: cannot use both flen and blockmode");
+            process::exit(2);
+        }
+        if self.blockmode && self.weights.close_open > 0.0 {
+            eprintln!("error: cannot use close_open with blockmode");
+            process::exit(2);
+        }
+        if self.blockmode && self.weights.truncate > 0.0 {
+            eprintln!("error: cannot use truncate with blockmode");
+            process::exit(2);
+        }
+        if self.blockmode && cli.artifacts_dir.is_none() {
+            eprintln!("error: must specify -P when using blockmode");
+            process::exit(2);
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            flen:              default_flen(),
+            nomsyncafterwrite: false,
+            nosizechecks:      false,
+            blockmode:         false,
+            opsize:            Default::default(),
+            weights:           Default::default(),
+        }
+    }
+}
+
+const fn default_opsize_max() -> usize {
+    65536
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+struct Opsize {
+    /// Minium size for operations
+    #[serde(default)]
+    min:   usize,
+    /// Maximum size for operations
+    #[serde(default = "default_opsize_max")]
+    max:   usize,
+    /// Alignment in bytes for all operations
+    align: Option<NonZeroUsize>,
+}
+
+impl Default for Opsize {
+    fn default() -> Self {
+        Opsize {
+            min:   0,
+            max:   65536,
+            align: NonZeroUsize::new(1),
+        }
+    }
+}
+
+const fn default_weight() -> f64 {
+    10.0
+}
+
+#[derive(Debug, Deserialize)]
+struct Weights {
+    #[serde(default)]
+    close_open: f64,
+    #[serde(default)]
+    invalidate: f64,
+    #[serde(default = "default_weight")]
+    mapread:    f64,
+    #[serde(default = "default_weight")]
+    mapwrite:   f64,
+    #[serde(default = "default_weight")]
+    read:       f64,
+    #[serde(default = "default_weight")]
+    write:      f64,
+    #[serde(default = "default_weight")]
+    truncate:   f64,
+}
+
+impl Default for Weights {
+    fn default() -> Self {
+        Weights {
+            close_open: 0.0,
+            invalidate: 0.0,
+            mapread:    1.0,
+            mapwrite:   1.0,
+            read:       1.0,
+            write:      1.0,
+            truncate:   1.0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Op {
+    CloseOpen,
     Read,
     Write,
     MapRead,
     Truncate,
+    Invalidate,
     MapWrite,
+}
+
+impl Op {
+    fn make_weighted_index<I>(weights: I) -> WeightedIndex<f64>
+    where
+        I: IntoIterator<Item = f64> + ExactSizeIterator,
+    {
+        assert_eq!(weights.len(), 7);
+        WeightedIndex::new(weights).unwrap()
+    }
 }
 
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            Op::CloseOpen => "close/open".fmt(f),
             Op::Read => "read".fmt(f),
             Op::Write => "write".fmt(f),
             Op::MapRead => "mapread".fmt(f),
             Op::Truncate => "truncate".fmt(f),
+            Op::Invalidate => "invalidate".fmt(f),
             Op::MapWrite => "mapwrite".fmt(f),
         }
     }
 }
 
-impl From<u32> for Op {
-    fn from(rv: u32) -> Self {
-        let x = rv % 5;
-        match x {
-            0 => Op::Read,
-            1 => Op::Write,
-            2 => Op::MapRead,
-            3 => Op::Truncate,
-            4 => Op::MapWrite,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl Distribution<Op> for Standard {
+impl Distribution<Op> for WeightedIndex<f64> {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Op {
-        // Manually handle the modulo division, rather than using
-        // RngCore::gen_range, for compatibility with the C-based FSX
-        Op::from(rng.next_u32())
+        match self.sample(rng) {
+            0usize => Op::CloseOpen,
+            1 => Op::Read,
+            2 => Op::Write,
+            3 => Op::MapRead,
+            4 => Op::Truncate,
+            5 => Op::Invalidate,
+            6 => Op::MapWrite,
+            _ => panic!("WeightedIndex was generated with too many keys"),
+        }
     }
 }
 
 #[derive(Clone, Copy)]
 enum LogEntry {
     Skip(Op),
+    CloseOpen,
     // offset, size
     Read(u64, usize),
     // old file len, offset, size
@@ -232,15 +356,15 @@ enum LogEntry {
     MapRead(u64, usize),
     // old file len, new file len
     Truncate(u64, u64),
+    Invalidate,
     // old file len, offset, size
     MapWrite(u64, u64, usize),
 }
 
 struct Exerciser {
+    align:             usize,
     artifacts_dir:     Option<PathBuf>,
     blockmode:         bool,
-    /// 1 in P chance of close+open at each op
-    closeprob:         Option<u32>,
     /// Current file size
     file_size:         u64,
     flen:              u64,
@@ -249,22 +373,16 @@ struct Exerciser {
     fwidth:            usize,
     /// Inject an error on this step
     inject:            Option<u64>,
-    /// 1 in P chance of MS_INVALIDATE at each op
-    invalprob:         Option<u32>,
     // What the file ought to contain
     good_buf:          Vec<u8>,
-    maxoplen:          usize,
     /// Monitor these byte ranges in extra detail.
     monitor:           Option<(u64, u64)>,
-    nomapread:         bool,
-    nomapwrite:        bool,
     nomsyncafterwrite: bool,
-    norandomoplen:     bool,
     nosizechecks:      bool,
     numops:            Option<u64>,
     // Records most recent operations for future dumping
     oplog:             AllocRingBuffer<LogEntry>,
-    readbdy:           u64,
+    opsize:            Opsize,
     // 0-indexed operation number to begin real transfers.
     simulatedopcount:  u64,
     /// Width for printing fields containing operation sizes
@@ -273,13 +391,12 @@ struct Exerciser {
     stepwidth:         usize,
     // File's original data
     original_buf:      Vec<u8>,
-    // Use OsPRng for full backwards-compatibility with the C fsx
-    rng:               OsPRng,
+    // Use XorShiftRng because it's deterministic and seedable
+    rng:               XorShiftRng,
     // Number of steps completed so far
     steps:             u64,
     file:              File,
-    truncbdy:          u64,
-    writebdy:          u64,
+    wi:                WeightedIndex<f64>,
 }
 
 impl Exerciser {
@@ -395,6 +512,8 @@ impl Exerciser {
 
     /// Close and reopen the file
     fn closeopen(&mut self) {
+        self.oplog.push(LogEntry::CloseOpen);
+
         if self.skip() {
             return;
         }
@@ -494,6 +613,11 @@ impl Exerciser {
                     op,
                     stepwidth = self.stepwidth
                 ),
+                LogEntry::CloseOpen => error!(
+                    "{:stepwidth$} CLOSE/OPEN",
+                    i,
+                    stepwidth = self.stepwidth
+                ),
                 LogEntry::Read(offset, size) => error!(
                     "{:stepwidth$} READ     {:#fwidth$x} => {:#fwidth$x} \
                      ({:#swidth$x} bytes)",
@@ -571,6 +695,11 @@ impl Exerciser {
                         fwidth = self.fwidth
                     );
                 }
+                LogEntry::Invalidate => error!(
+                    "{:stepwidth$} INVALIDATE",
+                    i,
+                    stepwidth = self.stepwidth
+                ),
             }
             i += 1;
         }
@@ -584,12 +713,10 @@ impl Exerciser {
     }
 
     /// Wrapper around read-like operations
-    fn read_like<F>(&mut self, op: Op, mut offset: u64, size: usize, f: F)
+    fn read_like<F>(&mut self, op: Op, offset: u64, size: usize, f: F)
     where
         F: Fn(&mut Exerciser, &mut [u8], u64, usize),
     {
-        offset -= offset % self.readbdy;
-
         if size == 0 {
             self.oplog.push(LogEntry::Skip(op));
             debug!(
@@ -664,12 +791,10 @@ impl Exerciser {
     }
 
     /// Wrapper around write-like operations.
-    fn write_like<F>(&mut self, op: Op, mut offset: u64, size: usize, f: F)
+    fn write_like<F>(&mut self, op: Op, offset: u64, size: usize, f: F)
     where
         F: Fn(&mut Exerciser, u64, usize, u64),
     {
-        offset -= offset % self.writebdy;
-
         if size == 0 {
             self.oplog.push(LogEntry::Skip(op));
             debug!(
@@ -759,7 +884,9 @@ impl Exerciser {
         sysconf(SysconfVar::PAGE_SIZE).unwrap().unwrap() as i32
     }
 
-    fn invalidate(&self) {
+    fn invalidate(&mut self) {
+        self.oplog.push(LogEntry::Invalidate);
+
         if self.skip() {
             return;
         }
@@ -816,89 +943,60 @@ impl Exerciser {
     }
 
     fn step(&mut self) {
-        // It would be more natural to generate op and closeopen independently.
-        // But do it this way for backwards compatibility with C.
-        let rv: u32 = self.rng.gen();
-        // Sigh.  Yes, this is how C does it.
-        let mut op = Op::from(
-            rv % (3
-                + (if self.blockmode { 0 } else { 1 })
-                + if self.nomapwrite { 0 } else { 1 }),
-        );
-        if self.blockmode && op == Op::Truncate {
-            op = Op::MapWrite;
-        }
+        let op: Op = self.wi.sample(&mut self.rng);
 
         if self.simulatedopcount > 0 && self.steps == self.simulatedopcount {
             self.writefileimage();
         }
         self.steps += 1;
 
-        let closeopen = if let Some(x) = self.closeprob {
-            (rv >> 3) < (1 << 28) / x
-        } else {
-            false
-        };
-        let invl = if let Some(x) = self.invalprob {
-            (rv >> 3) < (1 << 28) / x
-        } else {
-            false
-        };
+        let mut size = self.rng.gen_range(self.opsize.min..=self.opsize.max);
+        let mut offset: u64 = self.rng.gen::<u32>() as u64;
 
-        if op == Op::Write || op == Op::MapWrite {
-            let mut size = if self.norandomoplen {
-                self.maxoplen
-            } else {
-                self.rng.gen::<u32>() as usize % (self.maxoplen + 1)
-            };
-            let mut offset: u64 = self.rng.gen::<u32>() as u64;
-            offset %= self.flen;
-            if offset + size as u64 > self.flen {
-                size = usize::try_from(self.flen - offset).unwrap();
+        match op {
+            Op::CloseOpen => self.closeopen(),
+            Op::Write | Op::MapWrite => {
+                offset %= self.flen;
+                offset -= offset % self.align as u64;
+                if offset + size as u64 > self.flen {
+                    size = usize::try_from(self.flen - offset).unwrap();
+                }
+                size -= size % self.align;
+                if op == Op::MapWrite {
+                    self.mapwrite(offset, size);
+                } else {
+                    self.write(offset, size);
+                }
             }
-            if !self.nomapwrite && op == Op::MapWrite {
-                self.mapwrite(offset, size);
-            } else {
-                self.write(offset, size);
+            Op::Truncate => {
+                let fsize = u64::from(self.rng.gen::<u32>()) % self.flen;
+                self.truncate(fsize)
             }
-        } else if op == Op::Truncate {
-            let fsize = u64::from(self.rng.gen::<u32>()) % self.flen;
-            self.truncate(fsize)
-        } else {
-            let mut size = if self.norandomoplen {
-                self.maxoplen
-            } else {
-                self.rng.gen::<u32>() as usize % (self.maxoplen + 1)
-            };
-            let mut offset: u64 = self.rng.gen::<u32>() as u64;
-            offset = if self.file_size > 0 {
-                offset % self.file_size
-            } else {
-                0
-            };
-            if offset + size as u64 > self.file_size {
-                size = usize::try_from(self.file_size - offset).unwrap();
-            }
-            if !self.nomapread && op == Op::MapRead {
-                self.mapread(offset, size);
-            } else {
-                self.read(offset, size);
+            Op::Invalidate => self.invalidate(),
+            Op::Read | Op::MapRead => {
+                offset = if self.file_size > 0 {
+                    offset % self.file_size
+                } else {
+                    0
+                };
+                offset -= offset % self.align as u64;
+                if offset + size as u64 > self.file_size {
+                    size = usize::try_from(self.file_size - offset).unwrap();
+                }
+                size -= size % self.align;
+                if op == Op::MapRead {
+                    self.mapread(offset, size);
+                } else {
+                    self.read(offset, size);
+                }
             }
         }
         if self.steps > self.simulatedopcount {
             self.check_size();
         }
-        if invl {
-            self.invalidate()
-        }
-        if closeopen {
-            self.closeopen()
-        }
     }
 
-    fn truncate(&mut self, mut size: u64) {
-        size -= size % self.truncbdy;
-
+    fn truncate(&mut self, size: u64) {
         if size > self.file_size {
             safemem::write_bytes(
                 &mut self.good_buf[self.file_size as usize..size as usize],
@@ -956,50 +1054,59 @@ impl Exerciser {
             self.file.set_len(self.file_size).unwrap();
         }
     }
-}
 
-impl From<Cli> for Exerciser {
-    fn from(cli: Cli) -> Self {
+    fn new(cli: Cli, conf: Config) -> Self {
         let seed = cli.seed.unwrap_or_else(|| {
             let mut seeder = thread_rng();
-            // The legacy FSX only uses 31-bit seeds.
-            seeder.gen::<u32>() & 0x7FFFFFFF
+            seeder.gen::<u64>()
         });
         info!("Using seed {}", seed);
         let mut oo = OpenOptions::new();
         oo.read(true).write(true);
-        if !cli.blockmode {
+        if !conf.blockmode {
             oo.create(true).truncate(true);
         }
         let mut file = oo.open(&cli.fname).expect("Cannot create file");
-        let flen = if cli.blockmode {
+        let flen = if conf.blockmode {
             file.metadata().unwrap().len()
         } else {
-            cli.flen.into()
+            conf.flen.into()
         };
         if flen == 0 {
             error!("ERROR: file length must be greater than zero");
             process::exit(2);
         }
-        let file_size = if cli.blockmode { flen } else { 0 };
+        let file_size = if conf.blockmode { flen } else { 0 };
         let mut original_buf = vec![0u8; flen as usize];
         let good_buf = vec![0u8; flen as usize];
-        if cli.blockmode {
+        if conf.blockmode {
             // Zero existing file
             file.write_all(&good_buf).unwrap();
         }
-        let mut rng = OsPRng::from_seed(seed.to_ne_bytes());
+        let mut rng = XorShiftRng::seed_from_u64(seed);
         rng.fill_bytes(&mut original_buf[..]);
         let fwidth = field_width(flen as usize, true);
-        let swidth = field_width(cli.oplen, true);
+        let swidth = field_width(conf.opsize.max, true);
         let stepwidth = field_width(
             cli.numops.map(|x| x as usize).unwrap_or(999999),
             false,
         );
+        let wi = Op::make_weighted_index(
+            [
+                conf.weights.close_open,
+                conf.weights.read,
+                conf.weights.write,
+                conf.weights.mapread,
+                conf.weights.truncate,
+                conf.weights.invalidate,
+                conf.weights.mapwrite,
+            ]
+            .into_iter(),
+        );
         Exerciser {
+            align: conf.opsize.align.map(usize::from).unwrap_or(1),
             artifacts_dir: cli.artifacts_dir,
-            blockmode: cli.blockmode,
-            closeprob: cli.closeprob,
+            blockmode: conf.blockmode,
             file,
             file_size,
             flen,
@@ -1007,25 +1114,19 @@ impl From<Cli> for Exerciser {
             fname: cli.fname,
             good_buf,
             inject: cli.inject,
-            invalprob: cli.invalprob,
-            maxoplen: cli.oplen,
             monitor: cli.monitor,
-            nomapread: cli.nomapread,
-            nomapwrite: cli.nomapwrite,
-            nomsyncafterwrite: cli.nomsyncafterwrite,
-            norandomoplen: cli.norandomoplen,
-            nosizechecks: cli.nosizechecks,
+            nomsyncafterwrite: conf.nomsyncafterwrite,
+            nosizechecks: conf.nosizechecks,
             numops: cli.numops,
+            opsize: conf.opsize,
             oplog: AllocRingBuffer::with_capacity(1024),
-            readbdy: cli.readbdy,
             simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
             swidth,
             stepwidth,
             original_buf,
             rng,
             steps: 0,
-            truncbdy: cli.truncbdy,
-            writebdy: cli.writebdy,
+            wi,
         }
     }
 }
@@ -1033,6 +1134,8 @@ impl From<Cli> for Exerciser {
 fn main() {
     env_logger::builder().format_timestamp(None).init();
     let cli = Cli::parse();
-    let mut exerciser = Exerciser::from(cli);
+    let config = cli.config.as_ref().map(Config::load).unwrap_or_default();
+    config.validate(&cli);
+    let mut exerciser = Exerciser::new(cli, config);
     exerciser.exercise()
 }

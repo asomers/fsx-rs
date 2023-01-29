@@ -622,3 +622,39 @@ fn punch_hole() {
 ";
     assert_eq!(expected, actual_stderr);
 }
+
+/// Skip zero-length hole punches
+#[cfg_attr(
+    not(any(
+        have_fspacectl,
+        target_os = "android",
+        target_os = "emscripten",
+        target_os = "fuchsia",
+        target_os = "linux"
+    )),
+    ignore
+)]
+#[test]
+fn punch_hole_zero() {
+    let mut cf = NamedTempFile::new().unwrap();
+    cf.write_all(b"[weights]\npunch_hole=1000").unwrap();
+
+    let tf = NamedTempFile::new().unwrap();
+
+    let cmd = Command::cargo_bin("fsx")
+        .unwrap()
+        .env("RUST_LOG", "debug")
+        .args(["-S", "301", "-N", "1", "-f"])
+        .arg(cf.path())
+        .arg(tf.path())
+        .assert()
+        .success();
+    let actual_stderr = CString::new(cmd.get_output().stderr.clone())
+        .unwrap()
+        .into_string()
+        .unwrap();
+    let expected: &str = "[INFO  fsx] Using seed 301
+[DEBUG fsx] 1 skipping zero size hole punch
+";
+    assert_eq!(expected, actual_stderr);
+}

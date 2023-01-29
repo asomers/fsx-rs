@@ -1183,6 +1183,17 @@ impl Exerciser {
 
     fn punch_hole(&mut self, offset: u64, len: u64) {
         assert!(offset + len <= self.file_size);
+
+        if len == 0 {
+            self.oplog.push(LogEntry::Skip(Op::PunchHole));
+            debug!(
+                "{:width$} skipping zero size hole punch",
+                self.steps,
+                width = self.stepwidth
+            );
+            return;
+        }
+
         safemem::write_bytes(
             &mut self.good_buf[offset as usize..(offset + len) as usize],
             0,

@@ -454,6 +454,20 @@ truncate = 0",
 [INFO  fsx] 1 sendfile    0x0 ..  0xfff ( 0x1000 bytes)
 "
 )]
+#[cfg_attr(
+    not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "freebsd"
+    )),
+    ignore
+)]
+#[case::posix_fadvise(
+    "[weights]\nposix_fadvise = 1000000",
+    "[DEBUG fsx] Using seed 200
+[INFO  fsx] 1 posix_fadvise(NoReuse   )    0x0 ..  0xfff ( 0x1000 bytes)
+"
+)]
 fn read_weights(#[case] wconf: &str, #[case] stderr: &str) {
     let mut cf = NamedTempFile::new().unwrap();
     let conf = format!(
@@ -592,6 +606,41 @@ fn posix_fallocate() {
             }
         }
     }
+}
+
+/// Exercise all advice types.
+#[test]
+#[cfg_attr(
+    not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "freebsd"
+    )),
+    ignore
+)]
+fn posix_fadvise() {
+    let mut cf = NamedTempFile::new().unwrap();
+    cf.write_all(b"[weights]\nposix_fadvise=1000000").unwrap();
+
+    let tf = NamedTempFile::new().unwrap();
+
+    let mut cmd = Command::cargo_bin("fsx").unwrap();
+    cmd.env("RUST_LOG", "debug")
+        .args(["-N", "6", "-S", "12318153001044186923"])
+        .arg("-f")
+        .arg(cf.path())
+        .arg(tf.path());
+    let r = cmd.ok().unwrap();
+    let actual_stderr = CString::new(r.stderr).unwrap().into_string().unwrap();
+    let expected = "[DEBUG fsx] Using seed 12318153001044186923
+[INFO  fsx] 1 posix_fadvise(Sequential)     0x0 ..     0x0 (    0x0 bytes)
+[INFO  fsx] 2 posix_fadvise(NoReuse   )     0x0 ..     0x0 (    0x0 bytes)
+[INFO  fsx] 3 posix_fadvise(Random    )     0x0 ..     0x0 (    0x0 bytes)
+[INFO  fsx] 4 posix_fadvise(WillNeed  )     0x0 ..     0x0 (    0x0 bytes)
+[INFO  fsx] 5 posix_fadvise(DontNeed  )     0x0 ..     0x0 (    0x0 bytes)
+[INFO  fsx] 6 posix_fadvise(Normal    )     0x0 ..     0x0 (    0x0 bytes)
+";
+    assert_eq!(expected, actual_stderr);
 }
 
 #[cfg_attr(

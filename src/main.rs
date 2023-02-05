@@ -769,7 +769,7 @@ impl Exerciser {
 
     /// Dump the contents of the oplog
     fn dump_logfile(&self) {
-        let mut i = self.steps - self.oplog.len() as u64;
+        let mut i = self.steps + 1 - self.oplog.len() as u64;
         error!("LOG DUMP");
         for le in self.oplog.iter() {
             match le {

@@ -332,11 +332,11 @@ fn miscompare() {
 [ERROR fsx]  0xe279 0xd1 0x00  0x26a9
 [ERROR fsx] Step# for the bad data is unknown; check HOLE and EXTEND ops
 [ERROR fsx] LOG DUMP
-[ERROR fsx]  0 SKIPPED  (read)
-[ERROR fsx]  1 TRUNCATE  UP   from     0x0 to 0x19efd
-[ERROR fsx]  2 WRITE     0xda28 => 0x14205 ( 0x67dd bytes)
-[ERROR fsx]  3 TRUNCATE  UP   from 0x19efd to 0x1cb67
-[ERROR fsx]  4 MAPREAD   0xe279 => 0x10932 ( 0x26b9 bytes)
+[ERROR fsx]  1 SKIPPED  (read)
+[ERROR fsx]  2 TRUNCATE  UP   from     0x0 to 0x19efd
+[ERROR fsx]  3 WRITE     0xda28 => 0x14205 ( 0x67dd bytes)
+[ERROR fsx]  4 TRUNCATE  UP   from 0x19efd to 0x1cb67
+[ERROR fsx]  5 MAPREAD   0xe279 => 0x10932 ( 0x26b9 bytes)
 ",
             actual_stderr
         );

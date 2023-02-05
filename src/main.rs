@@ -448,6 +448,7 @@ struct Exerciser {
     // Records most recent operations for future dumping
     oplog:             AllocRingBuffer<LogEntry>,
     opsize:            Opsize,
+    seed:              u64,
     // 0-indexed operation number to begin real transfers.
     simulatedopcount:  u64,
     /// Width for printing fields containing operation sizes
@@ -770,6 +771,7 @@ impl Exerciser {
     /// Dump the contents of the oplog
     fn dump_logfile(&self) {
         let mut i = self.steps + 1 - self.oplog.len() as u64;
+        error!("Using seed {}", self.seed);
         error!("LOG DUMP");
         for le in self.oplog.iter() {
             match le {
@@ -1444,7 +1446,7 @@ impl Exerciser {
             let mut seeder = thread_rng();
             seeder.gen::<u64>()
         });
-        info!("Using seed {}", seed);
+        debug!("Using seed {}", seed);
         let mut oo = OpenOptions::new();
         oo.read(true).write(true);
         if !conf.blockmode {
@@ -1509,6 +1511,7 @@ impl Exerciser {
             numops: cli.numops,
             opsize: conf.opsize,
             oplog: AllocRingBuffer::with_capacity(1024),
+            seed,
             simulatedopcount: <NonZeroU64 as Into<u64>>::into(cli.opnum) - 1,
             swidth,
             stepwidth,

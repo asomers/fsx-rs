@@ -16,7 +16,7 @@ use tempfile::{NamedTempFile, TempDir};
      min = 65536
      max = 65536",
     "-N10 -S 2",
-    "[INFO  fsx] Using seed 2
+    "[DEBUG fsx] Using seed 2
 [INFO  fsx]  1 mapwrite 0x17dbf .. 0x27dbe (0x10000 bytes)
 [INFO  fsx]  2 read     0x216ce .. 0x27dbe ( 0x66f1 bytes)
 [INFO  fsx]  3 write    0x2309f .. 0x3309e (0x10000 bytes)
@@ -42,7 +42,7 @@ use tempfile::{NamedTempFile, TempDir};
      write = 1
      truncate = 1",
     "-N10 -S 2",
-    "[INFO  fsx] Using seed 2
+    "[DEBUG fsx] Using seed 2
 [INFO  fsx]  1 truncate     0x0 => 0x32aab
 [INFO  fsx]  2 truncate 0x32aab =>  0xf651
 [INFO  fsx]  3 truncate  0xf651 => 0x19f9c
@@ -62,7 +62,7 @@ use tempfile::{NamedTempFile, TempDir};
      min = 65536
      max = 65536",
     "-N10 -S 9",
-    "[INFO  fsx] Using seed 9
+    "[DEBUG fsx] Using seed 9
 [DEBUG fsx]  1 skipping zero size read
 [INFO  fsx]  2 truncate     0x0 => 0x2423e
 [INFO  fsx]  3 mapwrite 0x2b9f0 .. 0x3b9ef (0x10000 bytes)
@@ -81,7 +81,7 @@ use tempfile::{NamedTempFile, TempDir};
      min = 65536
      max = 65536",
     "-N 110 -b 100 -S 4",
-    "[INFO  fsx] Using seed 4
+    "[DEBUG fsx] Using seed 4
 [DEBUG fsx]   1 skipping zero size read
 [DEBUG fsx]   2 skipping zero size read
 [DEBUG fsx]   3 skipping zero size read
@@ -110,7 +110,7 @@ use tempfile::{NamedTempFile, TempDir};
      [weights]
      close_open = 100",
     "-N 1 -S 13",
-    "[INFO  fsx] Using seed 13
+    "[DEBUG fsx] Using seed 13
 [INFO  fsx] 1 close/open
 "
 )]
@@ -119,7 +119,7 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::baseline(
     "",
     "-N10 -S 20",
-    "[INFO  fsx] Using seed 20
+    "[DEBUG fsx] Using seed 20
 [DEBUG fsx]  1 skipping zero size read
 [DEBUG fsx]  2 skipping zero size read
 [INFO  fsx]  3 write    0x202a1 .. 0x20407 (  0x167 bytes)
@@ -137,7 +137,7 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::nomsyncafterwrite(
     "nomsyncafterwrite = true",
     "-N10 -S20",
-    "[INFO  fsx] Using seed 20
+    "[DEBUG fsx] Using seed 20
 [DEBUG fsx]  1 skipping zero size read
 [DEBUG fsx]  2 skipping zero size read
 [INFO  fsx]  3 write    0x202a1 .. 0x20407 (  0x167 bytes)
@@ -157,7 +157,7 @@ use tempfile::{NamedTempFile, TempDir};
      min = 0
      max = 4096",
     "-N 10 -S 30",
-    "[INFO  fsx] Using seed 30
+    "[DEBUG fsx] Using seed 30
 [INFO  fsx]  1 mapwrite 0x21c83 .. 0x2232d ( 0x6ab bytes)
 [INFO  fsx]  2 mapread  0x115e9 .. 0x11da7 ( 0x7bf bytes)
 [INFO  fsx]  3 truncate 0x2232e => 0x16494
@@ -175,7 +175,7 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::flen(
     "flen = 1048576",
     "-N 10 -S 56",
-    "[INFO  fsx] Using seed 56
+    "[DEBUG fsx] Using seed 56
 [DEBUG fsx]  1 skipping zero size read
 [INFO  fsx]  2 write     0xcfb9a ..  0xdc46b ( 0xc8d2 bytes)
 [INFO  fsx]  3 mapwrite  0xff116 ..  0xfffff (  0xeea bytes)
@@ -194,7 +194,7 @@ use tempfile::{NamedTempFile, TempDir};
     "[weights]
     invalidate = 10",
     "-N 10 -S 42",
-    "[INFO  fsx] Using seed 42
+    "[DEBUG fsx] Using seed 42
 [DEBUG fsx]  1 skipping zero size read
 [DEBUG fsx]  2 skipping invalidate of zero-length file
 [DEBUG fsx]  3 skipping zero size read
@@ -213,7 +213,7 @@ use tempfile::{NamedTempFile, TempDir};
     "[weights]
     invalidate = 1000",
     "-N 1 -S 10",
-    "[INFO  fsx] Using seed 10
+    "[DEBUG fsx] Using seed 10
 [DEBUG fsx] 1 skipping invalidate of zero-length file
 "
 )]
@@ -223,7 +223,7 @@ use tempfile::{NamedTempFile, TempDir};
     "[opsize]
     align = 4096",
     "-N 10 -S 46",
-    "[INFO  fsx] Using seed 46
+    "[DEBUG fsx] Using seed 46
 [INFO  fsx]  1 mapwrite 0x2e000 .. 0x31fff ( 0x4000 bytes)
 [INFO  fsx]  2 write    0x18000 .. 0x1cfff ( 0x5000 bytes)
 [INFO  fsx]  3 read     0x1e000 .. 0x27fff ( 0xa000 bytes)
@@ -241,7 +241,7 @@ use tempfile::{NamedTempFile, TempDir};
 #[case::monitor(
     "",
     "-N 10 -S 68 -m 32768:65536",
-    "[INFO  fsx] Using seed 68
+    "[DEBUG fsx] Using seed 68
 [DEBUG fsx]  1 skipping zero size read
 [DEBUG fsx]  2 skipping zero size read
 [DEBUG fsx]  3 skipping zero size read
@@ -261,7 +261,7 @@ use tempfile::{NamedTempFile, TempDir};
     [weights]
     truncate = 0",
     "-S 72 -N 10 -P /tmp",
-    "[INFO  fsx] Using seed 72
+    "[DEBUG fsx] Using seed 72
 [INFO  fsx]  1 write     0xc0405 ..  0xc2ac7 ( 0x26c3 bytes)
 [INFO  fsx]  2 mapwrite  0x77eb8 ..  0x78c78 (  0xdc1 bytes)
 [INFO  fsx]  3 read      0x323d0 ..  0x37cd9 ( 0x590a bytes)
@@ -322,7 +322,7 @@ fn miscompare() {
             .into_string()
             .unwrap();
         assert_eq!(
-            "[INFO  fsx] Using seed 10
+            "[DEBUG fsx] Using seed 10
 [DEBUG fsx]  1 skipping zero size read
 [INFO  fsx]  2 truncate     0x0 => 0x19efd
 [INFO  fsx]  4 truncate 0x19efd => 0x1cb67
@@ -331,12 +331,13 @@ fn miscompare() {
 [ERROR fsx] OFFSET  GOOD  BAD  RANGE  
 [ERROR fsx]  0xe279 0xd1 0x00  0x26a9
 [ERROR fsx] Step# for the bad data is unknown; check HOLE and EXTEND ops
+[ERROR fsx] Using seed 10
 [ERROR fsx] LOG DUMP
-[ERROR fsx]  0 SKIPPED  (read)
-[ERROR fsx]  1 TRUNCATE  UP   from     0x0 to 0x19efd
-[ERROR fsx]  2 WRITE     0xda28 => 0x14205 ( 0x67dd bytes)
-[ERROR fsx]  3 TRUNCATE  UP   from 0x19efd to 0x1cb67
-[ERROR fsx]  4 MAPREAD   0xe279 => 0x10932 ( 0x26b9 bytes)
+[ERROR fsx]  1 SKIPPED  (read)
+[ERROR fsx]  2 TRUNCATE  UP   from     0x0 to 0x19efd
+[ERROR fsx]  3 WRITE     0xda28 => 0x14205 ( 0x67dd bytes)
+[ERROR fsx]  4 TRUNCATE  UP   from 0x19efd to 0x1cb67
+[ERROR fsx]  5 MAPREAD   0xe279 => 0x10932 ( 0x26b9 bytes)
 ",
             actual_stderr
         );
@@ -420,19 +421,19 @@ truncate = 0",
 #[rstest]
 #[case::read(
     "[weights]\nread = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 read        0x0 ..  0xfff ( 0x1000 bytes)
 "
 )]
 #[case::mapread(
     "[weights]\nmapread = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 mapread     0x0 ..  0xfff ( 0x1000 bytes)
 "
 )]
 #[case::invalidate(
     "[weights]\ninvalidate = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 msync(MS_INVALIDATE)
 "
 )]
@@ -449,7 +450,7 @@ truncate = 0",
 )]
 #[case::sendfile(
     "[weights]\nsendfile = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 sendfile    0x0 ..  0xfff ( 0x1000 bytes)
 "
 )]
@@ -484,37 +485,37 @@ fn read_weights(#[case] wconf: &str, #[case] stderr: &str) {
 #[rstest]
 #[case::close_open(
     "[weights]\nclose_open = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 close/open
 "
 )]
 #[case::write(
     "[weights]\nwrite = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 write    0x18004 .. 0x1a03a ( 0x2037 bytes)
 "
 )]
 #[case::mapwrite(
     "[weights]\nmapwrite = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 mapwrite 0x18004 .. 0x1a03a ( 0x2037 bytes)
 "
 )]
 #[case::truncate(
     "[weights]\ntruncate = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 truncate     0x0 => 0x11184
 "
 )]
 #[case::fsync(
     "[weights]\nfsync = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 fsync
 "
 )]
 #[case::fdatasync(
     "[weights]\nfdatasync = 1000000",
-    "[INFO  fsx] Using seed 200
+    "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 fdatasync
 "
 )]
@@ -570,7 +571,7 @@ fn posix_fallocate() {
             // fsx passed.  Now check its output
             let actual_stderr =
                 CString::new(r.stderr).unwrap().into_string().unwrap();
-            let expected = "[INFO  fsx] Using seed 200
+            let expected = "[DEBUG fsx] Using seed 200
 [INFO  fsx] 1 posix_fallocate 0x18004 .. 0x1a03a ( 0x2037 bytes)
 ";
             assert_eq!(expected, actual_stderr);
@@ -625,7 +626,7 @@ fn punch_hole() {
         .unwrap()
         .into_string()
         .unwrap();
-    let expected: &str = "[INFO  fsx] Using seed 301
+    let expected: &str = "[DEBUG fsx] Using seed 301
 [INFO  fsx]  1 write    0x31a71 .. 0x32208 (  0x798 bytes)
 [INFO  fsx]  2 write    0x1b01b .. 0x2a456 ( 0xf43c bytes)
 [INFO  fsx]  3 read     0x2a547 .. 0x32208 ( 0x7cc2 bytes)
@@ -670,7 +671,7 @@ fn punch_hole_zero() {
         .unwrap()
         .into_string()
         .unwrap();
-    let expected: &str = "[INFO  fsx] Using seed 301
+    let expected: &str = "[DEBUG fsx] Using seed 301
 [DEBUG fsx] 1 skipping zero size hole punch
 ";
     assert_eq!(expected, actual_stderr);

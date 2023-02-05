@@ -30,7 +30,7 @@ use nix::{
     unistd::{sysconf, SysconfVar},
 };
 use rand::{
-    distributions::{Distribution, WeightedIndex},
+    distributions::{Distribution, Standard, WeightedIndex},
     thread_rng,
     Rng,
     RngCore,
@@ -39,6 +39,67 @@ use rand::{
 use rand_xorshift::XorShiftRng;
 use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 use serde_derive::Deserialize;
+
+cfg_if! {
+    if #[cfg(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "freebsd"
+        ))] {
+        #[derive(Copy, Clone, Debug)]
+        struct PosixFadviseAdvice(nix::fcntl::PosixFadviseAdvice);
+
+        impl Distribution<PosixFadviseAdvice> for Standard {
+            fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PosixFadviseAdvice
+            {
+                use nix::fcntl;
+
+                let inner = match rng.next_u32() % 6 {
+                    0u32 => fcntl::PosixFadviseAdvice::POSIX_FADV_NORMAL,
+                    1u32 => fcntl::PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
+                    2u32 => fcntl::PosixFadviseAdvice::POSIX_FADV_RANDOM,
+                    3u32 => fcntl::PosixFadviseAdvice::POSIX_FADV_NOREUSE,
+                    4u32 => fcntl::PosixFadviseAdvice::POSIX_FADV_WILLNEED,
+                    5u32 => fcntl::PosixFadviseAdvice::POSIX_FADV_DONTNEED,
+                    _ => unreachable!()
+                };
+                PosixFadviseAdvice(inner)
+            }
+        }
+
+        impl fmt::Display for PosixFadviseAdvice {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error>
+            {
+                use nix::fcntl::PosixFadviseAdvice::*;
+
+                match self.0 {
+                    POSIX_FADV_NORMAL => "Normal".fmt(f),
+                    POSIX_FADV_SEQUENTIAL => "Sequential".fmt(f),
+                    POSIX_FADV_RANDOM => "Random".fmt(f),
+                    POSIX_FADV_NOREUSE => "NoReuse".fmt(f),
+                    POSIX_FADV_WILLNEED => "WillNeed".fmt(f),
+                    POSIX_FADV_DONTNEED => "DontNeed".fmt(f),
+                    _ => unimplemented!()
+                }
+            }
+        }
+    } else {
+        #[derive(Copy, Clone, Debug)]
+        struct PosixFadviseAdvice(());
+        impl Distribution<PosixFadviseAdvice> for Standard {
+            fn sample<R: Rng + ?Sized>(&self, _: &mut R) -> PosixFadviseAdvice
+            {
+                PosixFadviseAdvice(())
+            }
+        }
+
+        impl fmt::Display for PosixFadviseAdvice {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+                "".fmt(f)
+            }
+        }
+    }
+}
 
 cfg_if! {
     if #[cfg(any(
@@ -315,6 +376,8 @@ struct Weights {
     punch_hole:      f64,
     #[serde(default)]
     sendfile:        f64,
+    #[serde(default)]
+    posix_fadvise:   f64,
 }
 
 impl Default for Weights {
@@ -332,6 +395,7 @@ impl Default for Weights {
             posix_fallocate: 0.0,
             punch_hole:      0.0,
             sendfile:        0.0,
+            posix_fadvise:   0.0,
         }
     }
 }
@@ -350,6 +414,7 @@ enum Op {
     PosixFallocate,
     PunchHole,
     Sendfile,
+    PosixFadvise,
 }
 
 impl Op {
@@ -357,7 +422,7 @@ impl Op {
     where
         I: IntoIterator<Item = f64> + ExactSizeIterator,
     {
-        assert_eq!(weights.len(), 12);
+        assert_eq!(weights.len(), 13);
         WeightedIndex::new(weights).unwrap()
     }
 }
@@ -377,6 +442,7 @@ impl fmt::Display for Op {
             Op::PosixFallocate => "posix_fallocate".fmt(f),
             Op::PunchHole => "punch_hole".fmt(f),
             Op::Sendfile => "sendfile".fmt(f),
+            Op::PosixFadvise => "posix_fadvise".fmt(f),
         }
     }
 }
@@ -396,6 +462,7 @@ impl Distribution<Op> for WeightedIndex<f64> {
             9 => Op::PosixFallocate,
             10 => Op::PunchHole,
             11 => Op::Sendfile,
+            12 => Op::PosixFadvise,
             _ => panic!("WeightedIndex was generated with too many keys"),
         }
     }
@@ -424,6 +491,13 @@ enum LogEntry {
     PunchHole(u64, u64),
     // offset, len
     Sendfile(u64, usize),
+    // advise, offset, len
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "freebsd"
+    ))]
+    PosixFadvise(PosixFadviseAdvice, u64, u64),
 }
 
 struct Exerciser {
@@ -562,6 +636,50 @@ impl Exerciser {
         } else {
             fn dosendfile(&mut self, _buf: &mut [u8], _offset: u64, _size: usize) {
                 eprintln!("sendfile is not supported on this platform.");
+                process::exit(1);
+            }
+        }
+    }
+
+    cfg_if! {
+        if #[cfg(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "freebsd"
+        ))] {
+            fn posix_fadvise(
+                &mut self,
+                advice: PosixFadviseAdvice,
+                offset: u64,
+                size: u64)
+            {
+                self.oplog.push(LogEntry::PosixFadvise(advice, offset, size));
+
+                if self.skip() {
+                    return;
+                }
+                info!(
+                    "{:stepwidth$} posix_fadvise({:10}) {:#fwidth$x} .. \
+                    {:#fwidth$x} ({:#swidth$x} bytes)",
+                    self.steps,
+                    advice,
+                    offset,
+                    (offset + size).saturating_sub(1),
+                    size,
+                    stepwidth = self.stepwidth,
+                    fwidth = self.fwidth,
+                    swidth = self.swidth
+                );
+                let r = nix::fcntl::posix_fadvise(self.file.as_raw_fd(),
+                    offset as i64, size as i64, advice.0);
+                if let Err(e) = r {
+                    error!("posix_fadvise failed with {e}");
+                    self.fail();
+                }
+            }
+        } else {
+            fn posix_fadvise(&mut self, _: PosixFadviseAdvice, _: u64, _: u64) {
+                eprintln!("posix_fadvise is not supported on this platform.");
                 process::exit(1);
             }
         }
@@ -913,6 +1031,23 @@ impl Exerciser {
                     fwidth = self.fwidth,
                     swidth = self.swidth
                 ),
+                #[cfg(any(
+                    target_os = "linux",
+                    target_os = "android",
+                    target_os = "freebsd"
+                ))]
+                LogEntry::PosixFadvise(advice, offset, len) => error!(
+                    "{:stepwidth$} POSIX_FADVISE({:10}) {:#fwidth$x} => \
+                     {:#fwidth$x} ({:#swidth$x} bytes)",
+                    i,
+                    advice,
+                    offset,
+                    offset + len - 1,
+                    len,
+                    stepwidth = self.stepwidth,
+                    swidth = self.swidth,
+                    fwidth = self.fwidth
+                ),
             }
             i += 1;
         }
@@ -1211,7 +1346,7 @@ impl Exerciser {
                 self.truncate(fsize)
             }
             Op::Invalidate => self.invalidate(),
-            Op::Read | Op::MapRead | Op::Sendfile => {
+            Op::Read | Op::MapRead | Op::Sendfile | Op::PosixFadvise => {
                 offset = if self.file_size > 0 {
                     offset % self.file_size
                 } else {
@@ -1226,6 +1361,10 @@ impl Exerciser {
                     Op::MapRead => self.mapread(offset, size),
                     Op::Read => self.read(offset, size),
                     Op::Sendfile => self.sendfile(offset, size),
+                    Op::PosixFadvise => {
+                        let advice: PosixFadviseAdvice = self.rng.gen();
+                        self.posix_fadvise(advice, offset, size as u64)
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -1491,6 +1630,7 @@ impl Exerciser {
                 conf.weights.posix_fallocate,
                 conf.weights.punch_hole,
                 conf.weights.sendfile,
+                conf.weights.posix_fadvise,
             ]
             .into_iter(),
         );

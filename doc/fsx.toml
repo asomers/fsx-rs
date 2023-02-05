@@ -98,3 +98,9 @@ punch_hole = 0
 # Read via sendfile(2)
 # Default: 0
 sendfile = 0
+
+# Advise the kernel about cache behavior with posix_fadvice.  The specific
+# advice given will be randomly determined from among all advice types
+# supported by the OS.
+# Default: 0
+posix_fadvice = 0

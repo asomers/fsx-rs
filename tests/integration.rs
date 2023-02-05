@@ -436,6 +436,23 @@ truncate = 0",
 [INFO  fsx] 1 msync(MS_INVALIDATE)
 "
 )]
+#[cfg_attr(
+    not(any(
+        target_os = "android",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "macos",
+    )),
+    ignore
+)]
+#[case::sendfile(
+    "[weights]\nsendfile = 1000000",
+    "[INFO  fsx] Using seed 200
+[INFO  fsx] 1 sendfile    0x0 ..  0xfff ( 0x1000 bytes)
+"
+)]
 fn read_weights(#[case] wconf: &str, #[case] stderr: &str) {
     let mut cf = NamedTempFile::new().unwrap();
     let conf = format!(

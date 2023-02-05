@@ -313,6 +313,8 @@ struct Weights {
     posix_fallocate: f64,
     #[serde(default)]
     punch_hole:      f64,
+    #[serde(default)]
+    sendfile:        f64,
 }
 
 impl Default for Weights {
@@ -329,6 +331,7 @@ impl Default for Weights {
             fdatasync:       0.0,
             posix_fallocate: 0.0,
             punch_hole:      0.0,
+            sendfile:        0.0,
         }
     }
 }
@@ -346,6 +349,7 @@ enum Op {
     Fdatasync,
     PosixFallocate,
     PunchHole,
+    Sendfile,
 }
 
 impl Op {
@@ -353,7 +357,7 @@ impl Op {
     where
         I: IntoIterator<Item = f64> + ExactSizeIterator,
     {
-        assert_eq!(weights.len(), 11);
+        assert_eq!(weights.len(), 12);
         WeightedIndex::new(weights).unwrap()
     }
 }
@@ -372,6 +376,7 @@ impl fmt::Display for Op {
             Op::Fdatasync => "fdatasync".fmt(f),
             Op::PosixFallocate => "posix_fallocate".fmt(f),
             Op::PunchHole => "punch_hole".fmt(f),
+            Op::Sendfile => "sendfile".fmt(f),
         }
     }
 }
@@ -390,6 +395,7 @@ impl Distribution<Op> for WeightedIndex<f64> {
             8 => Op::Fdatasync,
             9 => Op::PosixFallocate,
             10 => Op::PunchHole,
+            11 => Op::Sendfile,
             _ => panic!("WeightedIndex was generated with too many keys"),
         }
     }
@@ -416,6 +422,8 @@ enum LogEntry {
     PosixFallocate(u64, u64),
     // offset, len
     PunchHole(u64, u64),
+    // offset, len
+    Sendfile(u64, usize),
 }
 
 struct Exerciser {
@@ -457,6 +465,107 @@ struct Exerciser {
 }
 
 impl Exerciser {
+    cfg_if! {
+        if #[cfg(any(target_is = "macos", target_os = "dragonfly", target_os = "ios"))] {
+            fn dosendfile(&mut self, buf: &mut [u8], offset: u64, size: usize) {
+                use std::{io::Read, os::unix::net::UnixStream, thread};
+                use nix::sys::sendfile::sendfile;
+
+                let (mut rd, wr) = UnixStream::pair().unwrap();
+                let ffd = self.file.as_raw_fd();
+                let sfd = wr.as_raw_fd();
+
+                let jh = thread::spawn(move || {
+                    sendfile(
+                        ffd,
+                        sfd,
+                        offset as i64,
+                        Some(size as _),
+                        None,
+                        None,
+                    )
+                });
+                rd.read_exact(buf).unwrap();
+                let (res, bytes_written) = jh.join().unwrap();
+                if res.is_err() {
+                    error!("sendfile returned {:?}", res);
+                    self.fail();
+                }
+                if bytes_written != size as i64 {
+                    error!("Short read with sendfile: {:#x} bytes instead of {:#x}",
+                           bytes_written, size);
+                    self.fail();
+                }
+            }
+        } else if #[cfg(target_os = "freebsd")] {
+            fn dosendfile(&mut self, buf: &mut [u8], offset: u64, size: usize) {
+                use std::{io::Read, os::unix::net::UnixStream, thread};
+                use nix::sys::sendfile::{sendfile, SfFlags};
+
+                let (mut rd, wr) = UnixStream::pair().unwrap();
+                let ffd = self.file.as_raw_fd();
+                let sfd = wr.as_raw_fd();
+
+                let jh = thread::spawn(move || {
+                    sendfile(
+                        ffd,
+                        sfd,
+                        offset as i64,
+                        Some(size),
+                        None,
+                        None,
+                        SfFlags::empty(),
+                        0
+                    )
+                });
+                rd.read_exact(buf).unwrap();
+                let (res, bytes_written) = jh.join().unwrap();
+                if res.is_err() {
+                    error!("sendfile returned {:?}", res);
+                    self.fail();
+                }
+                if bytes_written != size as i64 {
+                    error!("Short read with sendfile: {:#x} bytes instead of {:#x}",
+                           bytes_written, size);
+                    self.fail();
+                }
+            }
+        } else if #[cfg(any(target_os = "android", target_os = "linux"))] {
+            fn dosendfile(&mut self, buf: &mut [u8], offset: u64, size: usize) {
+                use std::{io::Read, os::unix::net::UnixStream, thread};
+                use nix::sys::sendfile::sendfile64;
+
+                let (mut rd, wr) = UnixStream::pair().unwrap();
+                let ffd = self.file.as_raw_fd();
+                let sfd = wr.as_raw_fd();
+                let mut ioffs = offset as i64;
+
+                let jh = thread::spawn(move || {
+                    sendfile64(sfd, ffd, Some(&mut ioffs), size)
+                });
+                rd.read_exact(buf).unwrap();
+                let res = jh.join().unwrap();
+                let bytes_written = match res {
+                    Ok(b) => b,
+                    Err(e) => {
+                        error!("sendfile returned {:?}", e);
+                        self.fail();
+                    }
+                };
+                if bytes_written != size {
+                    error!("Short read with sendfile: {:#x} bytes instead of {:#x}",
+                           bytes_written, size);
+                    self.fail();
+                }
+            }
+        } else {
+            fn dosendfile(&mut self, _buf: &mut [u8], _offset: u64, _size: usize) {
+                eprintln!("sendfile is not supported on this platform.");
+                process::exit(1);
+            }
+        }
+    }
+
     fn check_buffers(&self, buf: &[u8], mut offset: u64) {
         let mut size = buf.len();
         if self.good_buf[offset as usize..offset as usize + size] != buf[..] {
@@ -791,13 +900,24 @@ impl Exerciser {
                         fwidth = self.fwidth
                     );
                 }
+                LogEntry::Sendfile(offset, size) => error!(
+                    "{:stepwidth$} SENDFILE {:#fwidth$x} => {:#fwidth$x} \
+                     ({:#swidth$x} bytes)",
+                    i,
+                    offset,
+                    offset + *size as u64,
+                    size,
+                    stepwidth = self.stepwidth,
+                    fwidth = self.fwidth,
+                    swidth = self.swidth
+                ),
             }
             i += 1;
         }
     }
 
     /// Report a failure and exit.
-    fn fail(&self) {
+    fn fail(&self) -> ! {
         self.dump_logfile();
         self.save_goodfile();
         process::exit(1);
@@ -826,10 +946,11 @@ impl Exerciser {
             );
             return;
         }
-        if op == Op::Read {
-            self.oplog.push(LogEntry::Read(offset, size));
-        } else {
-            self.oplog.push(LogEntry::MapRead(offset, size));
+        match op {
+            Op::Read => self.oplog.push(LogEntry::Read(offset, size)),
+            Op::MapRead => self.oplog.push(LogEntry::MapRead(offset, size)),
+            Op::Sendfile => self.oplog.push(LogEntry::Sendfile(offset, size)),
+            _ => unimplemented!(),
         }
         if self.skip() {
             return;
@@ -1053,6 +1174,10 @@ impl Exerciser {
         self.read_like(Op::Read, offset, size, Self::doread)
     }
 
+    fn sendfile(&mut self, offset: u64, size: usize) {
+        self.read_like(Op::Sendfile, offset, size, Self::dosendfile)
+    }
+
     fn step(&mut self) {
         let op: Op = self.wi.sample(&mut self.rng);
 
@@ -1084,7 +1209,7 @@ impl Exerciser {
                 self.truncate(fsize)
             }
             Op::Invalidate => self.invalidate(),
-            Op::Read | Op::MapRead => {
+            Op::Read | Op::MapRead | Op::Sendfile => {
                 offset = if self.file_size > 0 {
                     offset % self.file_size
                 } else {
@@ -1095,10 +1220,11 @@ impl Exerciser {
                     size = usize::try_from(self.file_size - offset).unwrap();
                 }
                 size -= size % self.align;
-                if op == Op::MapRead {
-                    self.mapread(offset, size);
-                } else {
-                    self.read(offset, size);
+                match op {
+                    Op::MapRead => self.mapread(offset, size),
+                    Op::Read => self.read(offset, size),
+                    Op::Sendfile => self.sendfile(offset, size),
+                    _ => unreachable!(),
                 }
             }
             Op::Fsync => self.fsync(),
@@ -1362,6 +1488,7 @@ impl Exerciser {
                 conf.weights.fdatasync,
                 conf.weights.posix_fallocate,
                 conf.weights.punch_hole,
+                conf.weights.sendfile,
             ]
             .into_iter(),
         );

@@ -94,3 +94,7 @@ posix_fallocate = 0
 # Others: not supported
 # Default: 0
 punch_hole = 0
+
+# Read via sendfile(2)
+# Default: 0
+sendfile = 0

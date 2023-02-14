@@ -61,5 +61,5 @@ operating system.
 
 # License
 
-`fsx` is distributed until the Apple Public Source License version 2.0.  See
+`fsx` is distributed under the Apple Public Source License version 2.0.  See
 LICENSE for details.

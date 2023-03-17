@@ -249,17 +249,17 @@ struct Cli {
     inject: Option<u64>,
 }
 
-const fn default_flen() -> u32 {
+const fn default_flen() -> u64 {
     256 * 1024
 }
 
 /// Configuration file format, as toml
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct Config {
     /// Maximum file size
     // NB: could be u64, but the C-based FSX only works with 32-bit file sizes
-    #[serde(default = "default_flen")]
-    flen: u32,
+    #[serde(default)]
+    flen: Option<u32>,
 
     /// Disable verifications of file size
     #[serde(default)]
@@ -302,7 +302,7 @@ impl Config {
 
     /// Validate compatibility with these CLI arguments
     fn validate(&self, cli: &Cli) {
-        if self.flen == 0 {
+        if self.flen == Some(0) {
             eprintln!("error: file length must be greater than zero");
             process::exit(2);
         }
@@ -326,10 +326,6 @@ impl Config {
             );
             process::exit(2);
         }
-        if self.blockmode && self.flen != default_flen() {
-            eprintln!("error: cannot use both flen and blockmode");
-            process::exit(2);
-        }
         if self.blockmode && self.weights.close_open > 0.0 {
             eprintln!("error: cannot use close_open with blockmode");
             process::exit(2);
@@ -345,19 +341,6 @@ impl Config {
         if self.blockmode && cli.artifacts_dir.is_none() {
             eprintln!("error: must specify -P when using blockmode");
             process::exit(2);
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            flen:              default_flen(),
-            nomsyncafterwrite: false,
-            nosizechecks:      false,
-            blockmode:         false,
-            opsize:            Default::default(),
-            weights:           Default::default(),
         }
     }
 }
@@ -1634,19 +1617,21 @@ impl Exerciser {
             oo.create(true).truncate(true);
         }
         let mut file = oo.open(&cli.fname).expect("Cannot create file");
-        let flen = if conf.blockmode {
-            let md = file.metadata().unwrap();
-            let ft = md.file_type();
-            if ft.is_file() {
-                md.len()
-            } else if ft.is_char_device() || ft.is_block_device() {
-                mediasize(file.as_raw_fd()).unwrap()
+        let flen = conf.flen.map(u64::from).unwrap_or_else(|| {
+            if conf.blockmode {
+                let md = file.metadata().unwrap();
+                let ft = md.file_type();
+                if ft.is_file() {
+                    md.len()
+                } else if ft.is_char_device() || ft.is_block_device() {
+                    mediasize(file.as_raw_fd()).unwrap()
+                } else {
+                    unimplemented!()
+                }
             } else {
-                unimplemented!()
+                default_flen()
             }
-        } else {
-            conf.flen.into()
-        };
+        });
         if flen == 0 {
             error!("ERROR: file length must be greater than zero");
             process::exit(2);

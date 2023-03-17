@@ -416,6 +416,36 @@ truncate = 0",
     );
 }
 
+/// flen is optional with blockmode, but can be used to limit RAM consumption
+#[test]
+fn blockmode_flen() {
+    let mut cf = NamedTempFile::new().unwrap();
+    cf.write_all(
+        b"blockmode = true
+flen = 131072
+[weights]
+truncate = 0",
+    )
+    .unwrap();
+
+    let mut tf = NamedTempFile::new().unwrap();
+    tf.as_file_mut().set_len(1 << 40).unwrap(); // 1 TiB
+    let artifacts_dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("fsx")
+        .unwrap()
+        .env("RUST_LOG", "warn")
+        .args(["-N1", "-S72", "-P"])
+        .arg(artifacts_dir.path())
+        .arg(tf.path())
+        .arg("-f")
+        .arg(cf.path())
+        .assert()
+        .success();
+    // Don't bother checking stderr.  If the flen option isn't handled
+    // correctly, fsx will either report failure or else consume 1 TiB of RAM.
+}
+
 /// Checks that the weights are assigned in the correct order, for operations
 /// that must read.
 #[rstest]

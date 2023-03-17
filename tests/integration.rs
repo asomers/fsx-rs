@@ -725,3 +725,124 @@ fn punch_hole_zero() {
 ";
     assert_eq!(expected, actual_stderr);
 }
+
+/// Tests that work on real device files
+mod blockdev {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::PathBuf};
+
+    use cfg_if::cfg_if;
+    use rstest::fixture;
+
+    use super::*;
+
+    struct Md(PathBuf);
+    cfg_if! {
+        if #[cfg(any(target_os = "freebsd", target_os = "netbsd"))] {
+            use std::path::Path;
+
+            impl Drop for Md {
+                fn drop(&mut self) {
+                    Command::new("mdconfig")
+                        .args(["-d", "-u"])
+                        .arg(&self.0)
+                        .output()
+                        .expect("failed to deallocate md(4) device");
+                }
+            }
+
+            #[fixture]
+            fn md() -> Option<Md> {
+                let output = Command::new("mdconfig")
+                    .args(["-a", "-t", "swap", "-s", "1m"])
+                    .output()
+                    .expect("failed to allocate md(4) device");
+                if output.status.success() {
+                    // Strip the trailing "\n"
+                    let l = output.stdout.len().saturating_sub(1);
+                    let mddev = OsStr::from_bytes(&output.stdout[0..l]);
+                    Some(Md(Path::new("/dev").join(mddev)))
+                } else {
+                    let l = output.stderr.len().saturating_sub(1);
+                    eprintln!("Skipping test: {}",
+                              OsStr::from_bytes(&output.stderr[0..l])
+                              .to_string_lossy());
+                    None
+                }
+            }
+        } else if #[cfg(target_os = "linux")] {
+            impl Drop for Md {
+                fn drop(&mut self) {
+                    Command::new("losetup")
+                        .args(["-d"])
+                        .arg(&self.0)
+                        .output()
+                        .expect("failed to deallocate loop device");
+                }
+            }
+
+            #[fixture]
+            fn md() -> Option<Md> {
+                let tf = NamedTempFile::new().unwrap();
+                tf.as_file().set_len(1048576).unwrap();
+                let output = Command::new("/sbin/losetup")
+                    .args(["-f", "--show"])
+                    .arg(tf.path())
+                    .output()
+                    .expect("failed to allocate loop device");
+                if output.status.success() {
+                    // Strip the trailing "\n"
+                    let l = output.stdout.len() - 1;
+                    let mddev = OsStr::from_bytes(&output.stdout[0..l]);
+                    Some(Md(mddev.into()))
+                } else {
+                    let l = output.stderr.len().saturating_sub(1);
+                    eprintln!("Skipping test: {}",
+                              OsStr::from_bytes(&output.stderr[0..l])
+                              .to_string_lossy());
+                    None
+                }
+            }
+        } else {
+            #[fixture]
+            fn md() -> Option<Md> {
+                unimplemented!()
+            }
+        }
+    }
+
+    /// When operating on a block device, fsx will automatically determine the
+    /// file size.
+    #[rstest]
+    fn flen_zero(md: Option<Md>) {
+        if md.is_none() {
+            return;
+        }
+        let md = md.unwrap();
+
+        let mut cf = NamedTempFile::new().unwrap();
+        cf.write_all(
+            b"blockmode = true
+nosizechecks = true
+[opsize]
+align = 4096
+[weights]
+mapread = 0
+mapwrite = 0
+truncate = 0",
+        )
+        .unwrap();
+
+        let artifacts_dir = TempDir::new().unwrap();
+
+        Command::cargo_bin("fsx")
+            .unwrap()
+            .env("RUST_LOG", "warn")
+            .args(["-N10", "-P"])
+            .arg(artifacts_dir.path())
+            .arg("-f")
+            .arg(cf.path())
+            .arg(md.0.as_path())
+            .assert()
+            .success();
+    }
+}

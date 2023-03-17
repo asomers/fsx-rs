@@ -3,12 +3,12 @@ use std::{
     ffi::OsStr,
     fmt,
     fs::{self, File, OpenOptions},
-    io::{Seek, SeekFrom, Write},
+    io::{self, Seek, SeekFrom, Write},
     mem,
     num::{NonZeroU64, NonZeroUsize},
     os::unix::{
-        fs::FileExt,
-        io::{AsRawFd, IntoRawFd},
+        fs::{FileExt, FileTypeExt},
+        io::{AsRawFd, IntoRawFd, RawFd},
     },
     path::PathBuf,
     process,
@@ -39,6 +39,48 @@ use rand::{
 use rand_xorshift::XorShiftRng;
 use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 use serde_derive::Deserialize;
+
+cfg_if! {
+    if #[cfg(any(
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            ))] {
+
+        fn mediasize(fd: RawFd) -> io::Result<u64> {
+
+            nix::ioctl_read! {
+                /// Get the size of the entire device in bytes.  This should be
+                /// a multiple of the sector size.
+                diocgmediasize, 'd', 129, nix::libc::off_t
+            }
+
+            let mut mediasize = mem::MaybeUninit::<nix::libc::off_t>::uninit();
+            // This ioctl is always safe
+            unsafe{
+                diocgmediasize(fd, mediasize.as_mut_ptr())
+                .map(|_| mediasize.assume_init() as u64)
+            }
+            .map_err(|_| io::Error::from_raw_os_error(nix::errno::errno()))
+        }
+    } else if #[cfg(any(target_os = "linux"))] {
+        fn mediasize(fd: RawFd) -> io::Result<u64> {
+            nix::ioctl_read!{blkgetsize64, 0x12, 0x72, u64}
+
+            let mut mediasize = mem::MaybeUninit::<u64>::uninit();
+            // This ioctl is always safe
+            unsafe{
+                blkgetsize64(fd, mediasize.as_mut_ptr())
+                .map(|_| mediasize.assume_init())
+            }
+            .map_err(|_| io::Error::from_raw_os_error(nix::errno::errno()))
+        }
+    } else {
+        fn mediasize(_fd: RawFd) -> io::Result<u64> {
+            unimplemented!()
+        }
+    }
+}
 
 cfg_if! {
     if #[cfg(any(
@@ -1593,7 +1635,15 @@ impl Exerciser {
         }
         let mut file = oo.open(&cli.fname).expect("Cannot create file");
         let flen = if conf.blockmode {
-            file.metadata().unwrap().len()
+            let md = file.metadata().unwrap();
+            let ft = md.file_type();
+            if ft.is_file() {
+                md.len()
+            } else if ft.is_char_device() || ft.is_block_device() {
+                mediasize(file.as_raw_fd()).unwrap()
+            } else {
+                unimplemented!()
+            }
         } else {
             conf.flen.into()
         };

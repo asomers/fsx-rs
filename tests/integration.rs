@@ -822,7 +822,6 @@ mod blockdev {
         let mut cf = NamedTempFile::new().unwrap();
         cf.write_all(
             b"blockmode = true
-nosizechecks = true
 [opsize]
 align = 4096
 [weights]

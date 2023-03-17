@@ -21,6 +21,7 @@ nosizechecks = false
 # starting FSX.
 #
 # Usually, when testing block devices, one should also set:
+# * nosizechecks              - true
 # * opsize.align - to the block device's minimum allocation size
 # * flen                      - do not set this at all
 # * weights.close_open        - 0.0

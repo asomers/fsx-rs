@@ -1651,6 +1651,13 @@ impl Exerciser {
             error!("ERROR: file length must be greater than zero");
             process::exit(2);
         }
+        let nosizechecks = if !conf.blockmode {
+            conf.nosizechecks
+        } else {
+            // No point in checking size when using blockmode.  We don't change
+            // it any way.
+            true
+        };
         let file_size = if conf.blockmode { flen } else { 0 };
         let mut original_buf = vec![0u8; flen as usize];
         let good_buf = vec![0u8; flen as usize];
@@ -1697,7 +1704,7 @@ impl Exerciser {
             inject: cli.inject,
             monitor: cli.monitor,
             nomsyncafterwrite: conf.nomsyncafterwrite,
-            nosizechecks: conf.nosizechecks,
+            nosizechecks,
             numops: cli.numops,
             opsize: conf.opsize,
             oplog: AllocRingBuffer::with_capacity(1024),

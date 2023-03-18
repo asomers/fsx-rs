@@ -3,12 +3,12 @@ use std::{
     ffi::OsStr,
     fmt,
     fs::{self, File, OpenOptions},
-    io::{Seek, SeekFrom, Write},
+    io::{self, Seek, SeekFrom, Write},
     mem,
     num::{NonZeroU64, NonZeroUsize},
     os::unix::{
-        fs::FileExt,
-        io::{AsRawFd, IntoRawFd},
+        fs::{FileExt, FileTypeExt},
+        io::{AsRawFd, IntoRawFd, RawFd},
     },
     path::PathBuf,
     process,
@@ -39,6 +39,48 @@ use rand::{
 use rand_xorshift::XorShiftRng;
 use ringbuffer::{AllocRingBuffer, RingBuffer, RingBufferExt, RingBufferWrite};
 use serde_derive::Deserialize;
+
+cfg_if! {
+    if #[cfg(any(
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            ))] {
+
+        fn mediasize(fd: RawFd) -> io::Result<u64> {
+
+            nix::ioctl_read! {
+                /// Get the size of the entire device in bytes.  This should be
+                /// a multiple of the sector size.
+                diocgmediasize, 'd', 129, nix::libc::off_t
+            }
+
+            let mut mediasize = mem::MaybeUninit::<nix::libc::off_t>::uninit();
+            // This ioctl is always safe
+            unsafe{
+                diocgmediasize(fd, mediasize.as_mut_ptr())
+                .map(|_| mediasize.assume_init() as u64)
+            }
+            .map_err(|_| io::Error::from_raw_os_error(nix::errno::errno()))
+        }
+    } else if #[cfg(any(target_os = "linux"))] {
+        fn mediasize(fd: RawFd) -> io::Result<u64> {
+            nix::ioctl_read!{blkgetsize64, 0x12, 0x72, u64}
+
+            let mut mediasize = mem::MaybeUninit::<u64>::uninit();
+            // This ioctl is always safe
+            unsafe{
+                blkgetsize64(fd, mediasize.as_mut_ptr())
+                .map(|_| mediasize.assume_init())
+            }
+            .map_err(|_| io::Error::from_raw_os_error(nix::errno::errno()))
+        }
+    } else {
+        fn mediasize(_fd: RawFd) -> io::Result<u64> {
+            unimplemented!()
+        }
+    }
+}
 
 cfg_if! {
     if #[cfg(any(
@@ -207,17 +249,17 @@ struct Cli {
     inject: Option<u64>,
 }
 
-const fn default_flen() -> u32 {
+const fn default_flen() -> u64 {
     256 * 1024
 }
 
 /// Configuration file format, as toml
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct Config {
     /// Maximum file size
     // NB: could be u64, but the C-based FSX only works with 32-bit file sizes
-    #[serde(default = "default_flen")]
-    flen: u32,
+    #[serde(default)]
+    flen: Option<u32>,
 
     /// Disable verifications of file size
     #[serde(default)]
@@ -260,7 +302,7 @@ impl Config {
 
     /// Validate compatibility with these CLI arguments
     fn validate(&self, cli: &Cli) {
-        if self.flen == 0 {
+        if self.flen == Some(0) {
             eprintln!("error: file length must be greater than zero");
             process::exit(2);
         }
@@ -284,10 +326,6 @@ impl Config {
             );
             process::exit(2);
         }
-        if self.blockmode && self.flen != default_flen() {
-            eprintln!("error: cannot use both flen and blockmode");
-            process::exit(2);
-        }
         if self.blockmode && self.weights.close_open > 0.0 {
             eprintln!("error: cannot use close_open with blockmode");
             process::exit(2);
@@ -303,19 +341,6 @@ impl Config {
         if self.blockmode && cli.artifacts_dir.is_none() {
             eprintln!("error: must specify -P when using blockmode");
             process::exit(2);
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            flen:              default_flen(),
-            nomsyncafterwrite: false,
-            nosizechecks:      false,
-            blockmode:         false,
-            opsize:            Default::default(),
-            weights:           Default::default(),
         }
     }
 }
@@ -1592,15 +1617,32 @@ impl Exerciser {
             oo.create(true).truncate(true);
         }
         let mut file = oo.open(&cli.fname).expect("Cannot create file");
-        let flen = if conf.blockmode {
-            file.metadata().unwrap().len()
-        } else {
-            conf.flen.into()
-        };
+        let flen = conf.flen.map(u64::from).unwrap_or_else(|| {
+            if conf.blockmode {
+                let md = file.metadata().unwrap();
+                let ft = md.file_type();
+                if ft.is_file() {
+                    md.len()
+                } else if ft.is_char_device() || ft.is_block_device() {
+                    mediasize(file.as_raw_fd()).unwrap()
+                } else {
+                    unimplemented!()
+                }
+            } else {
+                default_flen()
+            }
+        });
         if flen == 0 {
             error!("ERROR: file length must be greater than zero");
             process::exit(2);
         }
+        let nosizechecks = if !conf.blockmode {
+            conf.nosizechecks
+        } else {
+            // No point in checking size when using blockmode.  We don't change
+            // it any way.
+            true
+        };
         let file_size = if conf.blockmode { flen } else { 0 };
         let mut original_buf = vec![0u8; flen as usize];
         let good_buf = vec![0u8; flen as usize];
@@ -1647,7 +1689,7 @@ impl Exerciser {
             inject: cli.inject,
             monitor: cli.monitor,
             nomsyncafterwrite: conf.nomsyncafterwrite,
-            nosizechecks: conf.nosizechecks,
+            nosizechecks,
             numops: cli.numops,
             opsize: conf.opsize,
             oplog: AllocRingBuffer::with_capacity(1024),

@@ -1,4 +1,9 @@
 // vim: tw=80
+
+// This lint doesn't play nicely with rstest and modules.
+// https://github.com/rust-lang/rust-clippy/issues/11050
+#![allow(clippy::items_after_test_module)]
+
 use std::{ffi::CString, fs, io::Write, process::Command};
 
 use assert_cmd::prelude::*;

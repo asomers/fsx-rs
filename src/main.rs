@@ -1605,6 +1605,9 @@ impl Exerciser {
         }
     }
 
+    // Clippy false positive:
+    // https://github.com/rust-lang/rust-clippy/issues/11300
+    #[allow(clippy::useless_conversion)]
     fn new(cli: Cli, conf: Config) -> Self {
         let seed = cli.seed.unwrap_or_else(|| {
             let mut seeder = thread_rng();

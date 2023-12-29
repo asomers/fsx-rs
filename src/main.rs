@@ -403,6 +403,8 @@ struct Weights {
     sendfile:        f64,
     #[serde(default)]
     posix_fadvise:   f64,
+    #[serde(default)]
+    copy_file_range: f64,
 }
 
 impl Default for Weights {
@@ -421,6 +423,7 @@ impl Default for Weights {
             punch_hole:      0.0,
             sendfile:        0.0,
             posix_fadvise:   0.0,
+            copy_file_range: 0.0,
         }
     }
 }
@@ -440,6 +443,7 @@ enum Op {
     PunchHole,
     Sendfile,
     PosixFadvise,
+    CopyFileRange,
 }
 
 impl Op {
@@ -447,7 +451,7 @@ impl Op {
     where
         I: IntoIterator<Item = f64> + ExactSizeIterator,
     {
-        assert_eq!(weights.len(), 13);
+        assert_eq!(weights.len(), 14);
         WeightedIndex::new(weights).unwrap()
     }
 }
@@ -468,6 +472,7 @@ impl fmt::Display for Op {
             Op::PunchHole => "punch_hole".fmt(f),
             Op::Sendfile => "sendfile".fmt(f),
             Op::PosixFadvise => "posix_fadvise".fmt(f),
+            Op::CopyFileRange => "copy_file_range".fmt(f),
         }
     }
 }
@@ -488,6 +493,7 @@ impl Distribution<Op> for WeightedIndex<f64> {
             10 => Op::PunchHole,
             11 => Op::Sendfile,
             12 => Op::PosixFadvise,
+            13 => Op::CopyFileRange,
             _ => panic!("WeightedIndex was generated with too many keys"),
         }
     }
@@ -516,13 +522,15 @@ enum LogEntry {
     PunchHole(u64, u64),
     // offset, len
     Sendfile(u64, usize),
-    // advise, offset, len
+    // advice, offset, len
     #[cfg(any(
         target_os = "linux",
         target_os = "android",
         target_os = "freebsd"
     ))]
     PosixFadvise(PosixFadviseAdvice, u64, u64),
+    // old file len, in_offset, out_offset, len
+    CopyFileRange(u64, u64, u64, usize),
 }
 
 struct Exerciser {
@@ -854,6 +862,113 @@ impl Exerciser {
         }
     }
 
+    fn copy_file_range(
+        &mut self,
+        op: Op,
+        mut ioffset: u64,
+        mut ooffset: u64,
+        mut size: usize,
+    ) {
+        let cur_file_size = self.file_size;
+
+        ioffset = if self.file_size > 0 {
+            ioffset % self.file_size
+        } else {
+            0
+        };
+        ioffset -= ioffset % self.align as u64;
+        if ioffset + size as u64 > self.file_size {
+            size = usize::try_from(self.file_size - ioffset).unwrap();
+        }
+
+        ooffset %= self.flen;
+        ooffset -= ooffset % self.align as u64;
+        if ooffset + size as u64 > self.flen {
+            size = usize::try_from(self.flen - ooffset).unwrap();
+        }
+
+        size = if ooffset >= ioffset {
+            size.min((ooffset - ioffset) as usize)
+        } else {
+            size.min((ioffset - ooffset) as usize)
+        };
+        size -= size % self.align;
+
+        if size == 0 {
+            self.oplog.push(LogEntry::Skip(op));
+            debug!(
+                "{:width$} skipping zero size copy_file_range",
+                self.steps,
+                width = self.stepwidth
+            );
+        } else {
+            if self.file_size < ooffset + size as u64 {
+                if self.file_size < ooffset {
+                    safemem::write_bytes(
+                        &mut self.good_buf
+                            [self.file_size as usize..ooffset as usize],
+                        0,
+                    )
+                }
+                self.file_size = ooffset + size as u64;
+            }
+            safemem::copy_over(
+                &mut self.good_buf[..],
+                ioffset as usize,
+                ooffset as usize,
+                size,
+            );
+
+            self.oplog.push(LogEntry::CopyFileRange(
+                cur_file_size,
+                ioffset,
+                ooffset,
+                size,
+            ));
+            let loglevel = self.loglevel(ioffset, Some(ooffset), size);
+            log!(
+                loglevel,
+                "{:stepwidth$} copy_file_range [{:#fwidth$x}:{:#fwidth$x}] => \
+                 [{:#fwidth$x}:{:#fwidth$x}] ({:#swidth$x} bytes)",
+                self.steps,
+                ioffset,
+                ioffset + size as u64 - 1,
+                ooffset,
+                ooffset + size as u64 - 1,
+                size,
+                stepwidth = self.stepwidth,
+                fwidth = self.fwidth,
+                swidth = self.swidth
+            );
+            self.do_copy_file_range(ioffset, ooffset, size)
+        }
+    }
+
+    /// Actually perform the copy_file_range, including retrying short writes
+    #[cfg(any(target_os = "freebsd", target_os = "linux"))]
+    fn do_copy_file_range(&mut self, inoff: u64, outoff: u64, mut len: usize) {
+        let mut inoff: i64 = inoff.try_into().unwrap();
+        let mut outoff: i64 = outoff.try_into().unwrap();
+        while len > 0 {
+            let r = nix::fcntl::copy_file_range(
+                self.file.as_fd(),
+                Some(&mut inoff),
+                self.file.as_fd(),
+                Some(&mut outoff),
+                len,
+            )
+            .unwrap();
+            assert!(r > 0, "0-length copy_file_range");
+            len -= r;
+        }
+    }
+
+    #[cfg(not(any(target_os = "freebsd", target_os = "linux")))]
+    fn do_copy_file_range(&mut self, _inoff: u64, _outoff: u64, _len: usize) {
+        eprintln!("copy_file_range is not supported on this platform.");
+        process::exit(1);
+    }
+
     fn doread(&mut self, buf: &mut [u8], offset: u64, size: usize) {
         let read = self.file.read_at(buf, offset).unwrap();
         if read < size {
@@ -1082,6 +1197,30 @@ impl Exerciser {
                     swidth = self.swidth,
                     fwidth = self.fwidth
                 ),
+                LogEntry::CopyFileRange(old_len, ioffset, ooffset, size) => {
+                    let sym = if ooffset > old_len {
+                        " HOLE"
+                    } else if ooffset + *size as u64 > *old_len {
+                        " EXTEND"
+                    } else {
+                        ""
+                    };
+                    error!(
+                        "{:stepwidth$} COPY_FILE_RANGE \
+                         [{:#fwidth$x},{:#fwidth$x}] => \
+                         [{:#fwidth$x},{:#fwidth$x}] ({:#swidth$x} bytes){}",
+                        i,
+                        ioffset,
+                        ioffset + *size as u64,
+                        ooffset,
+                        ooffset + *size as u64,
+                        size,
+                        sym,
+                        stepwidth = self.stepwidth,
+                        fwidth = self.fwidth,
+                        swidth = self.swidth
+                    )
+                }
             }
             i += 1;
         }
@@ -1126,7 +1265,7 @@ impl Exerciser {
         if self.skip() {
             return;
         }
-        let loglevel = self.loglevel(offset, size);
+        let loglevel = self.loglevel(offset, None, size);
         log!(
             loglevel,
             "{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} \
@@ -1215,7 +1354,7 @@ impl Exerciser {
             return;
         }
 
-        let loglevel = self.loglevel(offset, size);
+        let loglevel = self.loglevel(offset, None, size);
         log!(
             loglevel,
             "{:stepwidth$} {:8} {:#fwidth$x} .. {:#fwidth$x} ({:#swidth$x} \
@@ -1323,11 +1462,21 @@ impl Exerciser {
     }
 
     /// Log level to use for I/O operations.
-    fn loglevel(&self, offset: u64, size: usize) -> Level {
+    fn loglevel(
+        &self,
+        offset: u64,
+        offset2: Option<u64>,
+        size: usize,
+    ) -> Level {
         let mut loglevel = Level::Info;
         if let Some((start, end)) = self.monitor {
             if start < offset + size as u64 && offset <= end {
                 loglevel = Level::Warn;
+            }
+            if let Some(offset2) = offset2 {
+                if start < offset2 + size as u64 && offset2 <= end {
+                    loglevel = Level::Warn;
+                }
             }
         }
         loglevel
@@ -1424,6 +1573,10 @@ impl Exerciser {
                 }
                 size -= size % self.align;
                 self.punch_hole(offset, size as u64)
+            }
+            Op::CopyFileRange => {
+                let ooffset: u64 = self.rng.gen::<u32>() as u64;
+                self.copy_file_range(op, offset, ooffset, size);
             }
         }
         if self.steps > self.simulatedopcount {
@@ -1685,6 +1838,7 @@ impl Exerciser {
                 conf.weights.punch_hole,
                 conf.weights.sendfile,
                 conf.weights.posix_fadvise,
+                conf.weights.copy_file_range,
             ]
             .into_iter(),
         );

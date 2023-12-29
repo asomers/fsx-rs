@@ -34,12 +34,16 @@ write to it.  Then run
 
 `fsx [OPTIONS] /path/to/filesystem/testfile`
 
+The default settings test the lowest-common denominator of most file systems.
+To tweak the test parameters, such as by enabling additional operations, create
+an fsx.toml file.  See the example for a description of the allowed settings.
+
 ## Migration
 
-fsx-rs is fully compatible with The C-based fsx.  Given the same seed, the two
-implementations will produce exactly the same sequence of file system
-operations.  Some of the options are slightly different.  If migrating from the
-C-based FSX, adapt like so:
+fsx-rs version 0.1.1 is fully compatible with The C-based fsx.  Given the same
+seed, the two implementations will produce exactly the same sequence of file
+system operations.  Some of the options are slightly different.  If migrating
+from the C-based FSX, adapt like so:
 
 | C-based FSX option | fsx-rs equivalent                          |
 | ------------------ | ------------------------------------------ |
@@ -50,6 +54,29 @@ C-based FSX, adapt like so:
 | -s                 | no equivalent                              |
 | -L                 | -B -P ...                                  |
 | -D N               | `fsx ... 2>&1 \| awk '$3 >= N {print}`     |
+
+Later versions of fsx-rs are not byte-for-byte compatible.  That is, fsx-rs
+will no longer produce exactly the same sequence of operations as the original,
+even when configured identically.  It also takes many of its options in a
+config file instead of on the command line.  If migrating from the C-based FSX
+to fsx-rs version 0.2.0 or later, these config file settings are equivalent to
+the original's command line flags:
+
+| C-based FSX option | fsx.toml equivalent                        |
+| ------------------ | ------------------------------------------ |
+| -c                 | `weights.close_open`                       |
+| -i                 | `weights.invalidate`                       |
+| -l                 | `flen`                                     |
+| -n                 | `nosizechecks`                             |
+| -o                 | `opsize.max`                               |
+| -r                 | `opsize.align`                             |
+| -t                 | `opsize.align`                             |
+| -w                 | `opsize.align`                             |
+| -L                 | `blockmode`                                |
+| -O                 | `opsize.max` and `opsize.min`              |
+| -W                 | `weights.write`                            |
+| -R                 | `weights.read`                             |
+| -U                 | `nomsyncafterwrite`                        |
 
 # Minimum Supported Rust Version (MSRV)
 

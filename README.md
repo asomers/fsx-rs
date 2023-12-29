@@ -65,6 +65,8 @@ the original's command line flags:
 | C-based FSX option | fsx.toml equivalent                        |
 | ------------------ | ------------------------------------------ |
 | -c                 | `weights.close_open`                       |
+| -d                 | -vv                                        |
+| -d -q              | -v                                         |
 | -i                 | `weights.invalidate`                       |
 | -l                 | `flen`                                     |
 | -n                 | `nosizechecks`                             |

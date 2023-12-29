@@ -23,6 +23,7 @@ use clap::{
     Error,
     Parser,
 };
+use clap_verbosity_flag::{Verbosity, WarnLevel};
 use libc::c_void;
 use log::{debug, error, info, log, warn, Level};
 use nix::{
@@ -247,6 +248,9 @@ struct Cli {
     // This option mainly exists just for the sake of the integration tests.
     #[arg(long = "inject", hide = true, value_name = "N")]
     inject: Option<u64>,
+
+    #[command(flatten)]
+    verbose: Verbosity<WarnLevel>,
 }
 
 const fn default_flen() -> u64 {
@@ -1872,8 +1876,11 @@ impl Exerciser {
 }
 
 fn main() {
-    env_logger::builder().format_timestamp(None).init();
     let cli = Cli::parse();
+    env_logger::builder()
+        .filter_level(cli.verbose.log_level_filter())
+        .format_timestamp(None)
+        .init();
     let config = cli.config.as_ref().map(Config::load).unwrap_or_default();
     config.validate(&cli);
     let mut exerciser = Exerciser::new(cli, config);

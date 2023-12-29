@@ -1,4 +1,4 @@
-.Dd January 21, 2023
+.Dd December 29, 2023
 .Dt FSX 1
 .Os
 .Sh NAME
@@ -6,7 +6,7 @@
 .Nd File System eXerciser
 .Sh SYNOPSIS
 .Nm
-.Op Fl hV
+.Op Fl hqVv
 .Op Fl b Ar OPNUM
 .Op Fl f Ar PATH
 .Op Fl m Ar FROM:TO
@@ -35,6 +35,8 @@ Begin real I/O at operation number
 .Ar OPNUM .
 Previous operations will be simulated, and their cumulative effect written
 to the file just before real I/O starts.
+.It Fl h , Fl Fl help
+Print usage information.
 .It Fl f Ar PATH
 Load configuration from
 .Ar PATH .
@@ -59,6 +61,9 @@ operations.
 If this option is not specified,
 .Nm
 will run until interrupted or a failure is detected.
+.It Fl q , Fl Fl quiet
+Decrease verbosity.
+This option may be specified up to two times.
 .It Fl P Ar DIRPATH
 On failure, save artifacts to the directory named by
 .Ar DIRPATH .
@@ -68,21 +73,11 @@ By default,
 .Nm
 will select a seed pseudorandomly, and log it to
 .Em stderr .
-.It Fl V
+.It Fl V , Fl Fl version
 Print the program's version.
-.El
-.Sh ENVIRONMENT
-.Bl -tag -width indent
-.It Ev RUST_LOG
-Controls the verbosity level of messages logged to
-.Em stderr .
-Valid values are
-.Dv trace ,
-.Dv debug ,
-.Dv info ,
-.Dv warn ,
-and
-.Dv error .
+.It Fl v , Fl Fl verbose
+Increase logging verbosity.
+This option may be specified up to three times.
 .El
 .Sh EXIT STATUS
 .Ex -std

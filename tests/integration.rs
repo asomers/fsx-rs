@@ -290,9 +290,8 @@ fn stability(#[case] conf: &str, #[case] args: &str, #[case] stderr: &str) {
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "debug")
         .args(args.split_ascii_whitespace())
-        .arg("-f")
+        .args(["-vv", "-f"])
         .arg(cf.path())
         .arg(tf.path())
         .assert()
@@ -311,8 +310,7 @@ fn miscompare() {
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "debug")
-        .args(["-N10", "-S10", "--inject", "3"])
+        .args(["-vv", "-N10", "-S10", "--inject", "3"])
         .arg(tf.path())
         .assert()
         .failure();
@@ -361,8 +359,7 @@ fn artifacts_dir() {
 
     Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "debug")
-        .args(["-N2", "-S11", "--inject", "1", "-P"])
+        .args(["-vv", "-N2", "-S11", "--inject", "1", "-P"])
         .arg(artifacts_dir.path())
         .arg(tf.path())
         .assert()
@@ -397,7 +394,6 @@ truncate = 0",
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "warn")
         .args(["-N2", "-S72", "-P"])
         .arg(artifacts_dir.path())
         .arg(tf.path())
@@ -435,7 +431,6 @@ truncate = 0",
 
     Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "warn")
         .args(["-N1", "-S72", "-P"])
         .arg(artifacts_dir.path())
         .arg(tf.path())
@@ -520,8 +515,7 @@ fn read_weights(#[case] wconf: &str, #[case] stderr: &str) {
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "debug")
-        .args(["-S", "200", "-N", "1", "-P", "/tmp"])
+        .args(["-vv", "-S", "200", "-N", "1", "-P", "/tmp"])
         .arg("-f")
         .arg(cf.path())
         .arg(tf.path())
@@ -580,8 +574,7 @@ fn weights(#[case] wconf: &str, #[case] stderr: &str) {
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "debug")
-        .args(["-S", "200", "-N", "1"])
+        .args(["-vv", "-S", "200", "-N", "1"])
         .arg("-f")
         .arg(cf.path())
         .arg(tf.path())
@@ -613,8 +606,7 @@ fn posix_fallocate() {
     let tf = NamedTempFile::new().unwrap();
 
     let mut cmd = Command::cargo_bin("fsx").unwrap();
-    cmd.env("RUST_LOG", "debug")
-        .args(["-S", "200", "-N", "1"])
+    cmd.args(["-vv", "-S", "200", "-N", "1"])
         .arg("-f")
         .arg(cf.path())
         .arg(tf.path());
@@ -664,8 +656,7 @@ fn posix_fadvise() {
     let tf = NamedTempFile::new().unwrap();
 
     let mut cmd = Command::cargo_bin("fsx").unwrap();
-    cmd.env("RUST_LOG", "debug")
-        .args(["-N", "6", "-S", "12318153001044186923"])
+    cmd.args(["-vv", "-N", "6", "-S", "12318153001044186923"])
         .arg("-f")
         .arg(cf.path())
         .arg(tf.path());
@@ -704,8 +695,7 @@ fn punch_hole() {
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "debug")
-        .args(["-S", "301", "-N", "10", "-P", "/tmp", "-f"])
+        .args(["-vv", "-S", "301", "-N", "10", "-P", "/tmp", "-f"])
         .arg(cf.path())
         .arg(tf.path())
         .assert()
@@ -749,8 +739,7 @@ fn punch_hole_zero() {
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()
-        .env("RUST_LOG", "debug")
-        .args(["-S", "301", "-N", "1", "-f"])
+        .args(["-vv", "-S", "301", "-N", "1", "-f"])
         .arg(cf.path())
         .arg(tf.path())
         .assert()
@@ -874,7 +863,6 @@ truncate = 0",
 
         Command::cargo_bin("fsx")
             .unwrap()
-            .env("RUST_LOG", "warn")
             .args(["-N10", "-P"])
             .arg(artifacts_dir.path())
             .arg("-f")

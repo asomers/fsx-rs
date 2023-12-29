@@ -5,6 +5,26 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- `fsync` and `fdatasync` operations
+  ([#24](https://github.com/asomers/fsx-rs/pull/24))
+
+- `posix_fallocate`
+  ([#26](https://github.com/asomers/fsx-rs/pull/26))
+
+- Hole punching via `fspacectl` on FreeBSD or `FALLOC_FL_PUNCH_HOLE` on Linux.
+  ([#28](https://github.com/asomers/fsx-rs/pull/28))
+
+- `sendfile`
+  ([#29](https://github.com/asomers/fsx-rs/pull/29))
+
+- `posix_fadvise`
+  ([#31](https://github.com/asomers/fsx-rs/pull/31))
+
+- `copy_file_range`
+  ([#43](https://github.com/asomers/fsx-rs/pull/43))
+
 ### Changed
 
 - The CLI has been completely changed by the addition of a config file.  Now,
@@ -25,6 +45,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
     all.
 
   ([#23](https://github.com/asomers/fsx-rs/pull/23))
+
+- Better usability when operating on block devices
+  ([#35](https://github.com/asomers/fsx-rs/pull/35))
+
+- Log verbosity is now controlled by the `-v` and `-q` flags instead of the
+  `RUST_LOG` environment variable.
+  ([#44](https://github.com/asomers/fsx-rs/pull/44))
+
+- The MSRV is now 1.70.0
 
 ## [0.1.1] - 2023-01-22
 ### Fixed

@@ -106,3 +106,7 @@ sendfile = 0
 # supported by the OS.
 # Default: 0
 posix_fadvise = 0
+
+# Copy a region of the file to a different region with copy_file_range(2)
+# Default: 0
+copy_file_range = 0

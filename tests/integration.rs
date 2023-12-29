@@ -453,13 +453,13 @@ truncate = 0",
 #[case::read(
     "[weights]\nread = 1000000",
     "[DEBUG fsx] Using seed 200
-[INFO  fsx] 1 read        0x0 ..  0xfff ( 0x1000 bytes)
+[INFO  fsx] 1 read        0x0 .. 0x1fff ( 0x2000 bytes)
 "
 )]
 #[case::mapread(
     "[weights]\nmapread = 1000000",
     "[DEBUG fsx] Using seed 200
-[INFO  fsx] 1 mapread     0x0 ..  0xfff ( 0x1000 bytes)
+[INFO  fsx] 1 mapread     0x0 .. 0x1fff ( 0x2000 bytes)
 "
 )]
 #[case::invalidate(
@@ -482,7 +482,7 @@ truncate = 0",
 #[case::sendfile(
     "[weights]\nsendfile = 1000000",
     "[DEBUG fsx] Using seed 200
-[INFO  fsx] 1 sendfile    0x0 ..  0xfff ( 0x1000 bytes)
+[INFO  fsx] 1 sendfile    0x0 .. 0x1fff ( 0x2000 bytes)
 "
 )]
 #[cfg_attr(
@@ -496,7 +496,15 @@ truncate = 0",
 #[case::posix_fadvise(
     "[weights]\nposix_fadvise = 1000000",
     "[DEBUG fsx] Using seed 200
-[INFO  fsx] 1 posix_fadvise(NoReuse   )    0x0 ..  0xfff ( 0x1000 bytes)
+[INFO  fsx] 1 posix_fadvise(WillNeed  )    0x0 .. 0x1fff ( 0x2000 bytes)
+"
+)]
+#[cfg_attr(not(any(target_os = "linux", target_os = "freebsd")), ignore)]
+#[case::copy_file_range(
+    "[weights]\ncopy_file_range = 1000000",
+    "[DEBUG fsx] Using seed 200
+[INFO  fsx] 1 copy_file_range [   0x0: 0xfff] => [0x1000:0x1fff] ( 0x1000 \
+     bytes)
 "
 )]
 fn read_weights(#[case] wconf: &str, #[case] stderr: &str) {
@@ -508,7 +516,7 @@ fn read_weights(#[case] wconf: &str, #[case] stderr: &str) {
     cf.write_all(conf.as_bytes()).unwrap();
 
     let mut tf = NamedTempFile::new().unwrap();
-    tf.as_file_mut().set_len(4096).unwrap();
+    tf.as_file_mut().set_len(8192).unwrap();
 
     let cmd = Command::cargo_bin("fsx")
         .unwrap()

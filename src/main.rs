@@ -8,7 +8,7 @@ use std::{
     num::{NonZeroU64, NonZeroUsize},
     os::unix::{
         fs::{FileExt, FileTypeExt},
-        io::{AsRawFd, IntoRawFd, RawFd},
+        io::{AsFd, AsRawFd, IntoRawFd, RawFd},
     },
     path::PathBuf,
     process,
@@ -568,12 +568,15 @@ impl Exerciser {
     cfg_if! {
         if #[cfg(any(target_is = "macos", target_os = "dragonfly", target_os = "ios"))] {
             fn dosendfile(&mut self, buf: &mut [u8], offset: u64, size: usize) {
-                use std::{io::Read, os::unix::net::UnixStream, thread};
+                use std::{io::Read, os::fd::BorrowedFd, os::unix::net::UnixStream, thread};
                 use nix::sys::sendfile::sendfile;
 
                 let (mut rd, wr) = UnixStream::pair().unwrap();
-                let ffd = self.file.as_raw_fd();
-                let sfd = wr.as_raw_fd();
+                // Safe because we unconditionally join the thread below.
+                let (ffd, sfd) = unsafe {(
+                    BorrowedFd::borrow_raw(self.file.as_raw_fd()),
+                    BorrowedFd::borrow_raw(wr.as_raw_fd()),
+                )};
 
                 let jh = thread::spawn(move || {
                     sendfile(
@@ -599,12 +602,15 @@ impl Exerciser {
             }
         } else if #[cfg(target_os = "freebsd")] {
             fn dosendfile(&mut self, buf: &mut [u8], offset: u64, size: usize) {
-                use std::{io::Read, os::unix::net::UnixStream, thread};
+                use std::{io::Read, os::fd::BorrowedFd, os::unix::net::UnixStream, thread};
                 use nix::sys::sendfile::{sendfile, SfFlags};
 
                 let (mut rd, wr) = UnixStream::pair().unwrap();
-                let ffd = self.file.as_raw_fd();
-                let sfd = wr.as_raw_fd();
+                // Safe because we unconditionally join the thread below.
+                let (ffd, sfd) = unsafe {(
+                    BorrowedFd::borrow_raw(self.file.as_raw_fd()),
+                    BorrowedFd::borrow_raw(wr.as_raw_fd()),
+                )};
 
                 let jh = thread::spawn(move || {
                     sendfile(
@@ -632,13 +638,16 @@ impl Exerciser {
             }
         } else if #[cfg(any(target_os = "android", target_os = "linux"))] {
             fn dosendfile(&mut self, buf: &mut [u8], offset: u64, size: usize) {
-                use std::{io::Read, os::unix::net::UnixStream, thread};
+                use std::{io::Read, os::fd::BorrowedFd, os::unix::net::UnixStream, thread};
                 use nix::sys::sendfile::sendfile64;
 
                 let (mut rd, wr) = UnixStream::pair().unwrap();
-                let ffd = self.file.as_raw_fd();
-                let sfd = wr.as_raw_fd();
                 let mut ioffs = offset as i64;
+                // Safe because we unconditionally join the thread below.
+                let (ffd, sfd) = unsafe {(
+                    BorrowedFd::borrow_raw(self.file.as_raw_fd()),
+                    BorrowedFd::borrow_raw(wr.as_raw_fd()),
+                )};
 
                 let jh = thread::spawn(move || {
                     sendfile64(sfd, ffd, Some(&mut ioffs), size)
@@ -863,7 +872,7 @@ impl Exerciser {
                 map_size.try_into().unwrap(),
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
-                self.file.as_raw_fd(),
+                Some(self.file.as_fd()),
                 offset as i64 - pg_offset as i64,
             )
             .unwrap();
@@ -889,7 +898,7 @@ impl Exerciser {
                 map_size.try_into().unwrap(),
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
-                self.file.as_raw_fd(),
+                Some(self.file.as_fd()),
                 offset as i64 - pg_offset as i64,
             )
             .unwrap();
@@ -1304,7 +1313,7 @@ impl Exerciser {
                 len.try_into().unwrap(),
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
-                self.file.as_raw_fd(),
+                Some(self.file.as_fd()),
                 0,
             )
             .unwrap();

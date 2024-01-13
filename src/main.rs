@@ -1662,15 +1662,7 @@ impl Exerciser {
             return;
         }
 
-        // XXX Should not log at WARN if size < self.monitor.0 and
-        // self.file_size < self.monitor.0.  But the C-based implementation
-        // does.
-        let mut loglevel = Level::Info;
-        if let Some((_, end)) = self.monitor {
-            if len <= end {
-                loglevel = Level::Warn;
-            }
-        }
+        let loglevel = self.loglevel(offset, None, len as usize);
         log!(
             loglevel,
             "{:stepwidth$} punch_hole {:#fwidth$x} .. {:#fwidth$x} \

@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - ReleaseDate
+
+### Fixed
+
+- `fspacectl` operations now highlight a monitor range (supplied with `-m`)
+  correctly.
+  ([#47](https://github.com/asomers/fsx-rs/pull/47))
+
 ## [0.2.0] - 2023-12-29
 
 ### Added

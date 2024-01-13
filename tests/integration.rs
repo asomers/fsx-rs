@@ -719,6 +719,58 @@ fn punch_hole() {
     assert_eq!(expected, actual_stderr);
 }
 
+/// During punch hole, monitor affected byte ranges
+#[cfg_attr(
+    not(any(
+        have_fspacectl,
+        target_os = "android",
+        target_os = "emscripten",
+        target_os = "fuchsia",
+        target_os = "linux"
+    )),
+    ignore
+)]
+#[test]
+fn punch_hole_monitor() {
+    let mut cf = NamedTempFile::new().unwrap();
+    cf.write_all(
+        b"[weights]\npunch_hole=3\nread=0\nwrite=0\nmapread=0\nmapwrite=0\ntruncate=1",
+    )
+    .unwrap();
+
+    let tf = NamedTempFile::new().unwrap();
+
+    let cmd = Command::cargo_bin("fsx")
+        .unwrap()
+        .args([
+            "-vv",
+            "-S",
+            "7482128686191834117",
+            "-N",
+            "4",
+            "-m",
+            "94428:94429",
+            "-P",
+            "/tmp",
+            "-f",
+        ])
+        .arg(cf.path())
+        .arg(tf.path())
+        .assert()
+        .success();
+    let actual_stderr = CString::new(cmd.get_output().stderr.clone())
+        .unwrap()
+        .into_string()
+        .unwrap();
+    let expected: &str = "[DEBUG fsx] Using seed 7482128686191834117
+[INFO  fsx] 1 truncate     0x0 => 0x170de
+[WARN  fsx] 2 punch_hole 0x13847 .. 0x170dd ( 0x3897 bytes)
+[INFO  fsx] 3 punch_hole  0x9876 .. 0x16b4e ( 0xd2d9 bytes)
+[INFO  fsx] 4 punch_hole  0x99ea .. 0x15902 ( 0xbf19 bytes)
+";
+    assert_eq!(expected, actual_stderr);
+}
+
 /// Skip zero-length hole punches
 #[cfg_attr(
     not(any(

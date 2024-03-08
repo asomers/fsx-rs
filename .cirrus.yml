@@ -1,84 +1,35 @@
-setup: &FREEBSD_SETUP
+task:
   env:
     HOME: /tmp # cargo needs it
-    RUST_BACKTRACE: full  # Better info for debugging test failures.
+    matrix:
+      - VERSION: 0.17.6
+      - VERSION: 0.18.3
+      - VERSION: 0.19.0
+      - VERSION: 0.20.0
+  matrix:
+    - name: FreeBSD 13.2
+      freebsd_instance:
+        image: freebsd-13-2-release-amd64
+    - name: FreeBSD 13.3
+      freebsd_instance:
+        image: freebsd-13-3-release-amd64
+    - name: FreeBSD 14.0
+      freebsd_instance:
+        image: freebsd-14-0-release-amd64-ufs
+    - name: FreeBSD 15.0-CURRENT
+      freebsd_instance:
+        image_family: freebsd-15-0-snap
+    - name: Linux
+      container:
+        image: rust:1.76.0
+    - name: OSX
+      macos_instance:
+        image: ghcr.io/cirruslabs/macos-sonoma-base:latest
   setup_script:
-    - fetch https://sh.rustup.rs -o rustup.sh
-    - sh rustup.sh -y --profile=minimal --default-toolchain ${VERSION}-x86_64-unknown-freebsd
-
-build: &BUILD
-  cargo_cache:
-    folder: $HOME/.cargo/registry
-    fingerprint_script: cat Cargo.lock || echo ""
-  build_script:
-    - . $HOME/.cargo/env || true
-    - cargo build
-  test_script:
-    - . $HOME/.cargo/env || true
-    - cargo test
-
-# Check only, for cross-OS testing
-check: &CHECK
-  cargo_cache:
-    folder: $HOME/.cargo/registry
-    fingerprint_script: cat Cargo.lock || echo ""
-  setup_script:
-    - rustup target add $TARGET
-  check_script:
-    - . $HOME/.cargo/env || true
-    - cargo check --target $TARGET --all-features
-
-task:
-  env:
-    VERSION: 1.70.0
-  name: FreeBSD 13.2 MSRV
-  freebsd_instance:
-    image: freebsd-13-2-release-amd64
-  << : *FREEBSD_SETUP
-  << : *BUILD
-  before_cache_script: rm -rf $HOME/.cargo/registry/index
-
-task:
-  name: FreeBSD 14.0 nightly
-  env:
-    VERSION: nightly
-  freebsd_instance:
-    image: freebsd-14-0-release-amd64-ufs
-  << : *FREEBSD_SETUP
-  << : *BUILD
-  clippy_script:
-    - . $HOME/.cargo/env
-    - rustup component add clippy
-    - cargo clippy --all-targets -- -D warnings
-  fmt_script:
-    - . $HOME/.cargo/env
-    - rustup component add rustfmt
-    - cargo fmt -- --check --color=never
+    - which rustc || curl https://sh.rustup.rs -sSf | sh -s -- -y
   audit_script:
-    - . $HOME/.cargo/env
-    - pkg install -y cargo-audit
+    - . $HOME/.cargo/env || true
+    - openssl version || true
+    - git2 --version || true
+    - cargo install --version=$VERSION cargo-audit
     - cargo audit
-  # Test our minimal version spec
-  minver_test_script:
-    - . $HOME/.cargo/env
-    - cargo update -Zminimal-versions
-    - cargo check --all-targets
-  before_cache_script: rm -rf $HOME/.cargo/registry/index
-
-task:
-  name: Linux MSRV
-  container:
-    image: rust:1.70.0
-  setup_script:
-    - rustup component add rustfmt
-  << : *BUILD
-  before_cache_script: rm -rf $HOME/.cargo/registry/index
-
-task:
-  name: NetBSD MSRV
-  env:
-    TARGET: x86_64-unknown-netbsd
-  container:
-    image: rust:1.70.0
-  << : *CHECK
-  before_cache_script: rm -rf $HOME/.cargo/registry/index

@@ -908,20 +908,14 @@ impl Exerciser {
         } else {
             if self.file_size < ooffset + size as u64 {
                 if self.file_size < ooffset {
-                    safemem::write_bytes(
-                        &mut self.good_buf
-                            [self.file_size as usize..ooffset as usize],
-                        0,
-                    )
+                    self.good_buf[self.file_size as usize..ooffset as usize]
+                        .fill(0);
                 }
                 self.file_size = ooffset + size as u64;
             }
-            safemem::copy_over(
-                &mut self.good_buf[..],
-                ioffset as usize,
-                ooffset as usize,
-                size,
-            );
+            let i = ioffset as usize;
+            let j = ooffset as usize;
+            self.good_buf[..].copy_within(i..i + size, j);
 
             self.oplog.push(LogEntry::CopyFileRange(
                 cur_file_size,
@@ -1336,11 +1330,7 @@ impl Exerciser {
         let cur_file_size = self.file_size;
         if self.file_size < offset + size as u64 {
             if self.file_size < offset {
-                safemem::write_bytes(
-                    &mut self.good_buf
-                        [self.file_size as usize..offset as usize],
-                    0,
-                )
+                self.good_buf[self.file_size as usize..offset as usize].fill(0);
             }
             self.file_size = offset + size as u64;
         }
@@ -1591,10 +1581,7 @@ impl Exerciser {
     fn posix_fallocate(&mut self, offset: u64, len: u64) {
         let new_size = self.file_size.max(offset + len);
         if new_size > self.file_size {
-            safemem::write_bytes(
-                &mut self.good_buf[self.file_size as usize..new_size as usize],
-                0,
-            )
+            self.good_buf[self.file_size as usize..new_size as usize].fill(0);
         }
         self.file_size = new_size;
         self.oplog.push(LogEntry::PosixFallocate(offset, len));
@@ -1652,10 +1639,7 @@ impl Exerciser {
             return;
         }
 
-        safemem::write_bytes(
-            &mut self.good_buf[offset as usize..(offset + len) as usize],
-            0,
-        );
+        self.good_buf[offset as usize..(offset + len) as usize].fill(0);
         self.oplog.push(LogEntry::PunchHole(offset, len));
 
         if self.skip() {
@@ -1706,10 +1690,7 @@ impl Exerciser {
 
     fn truncate(&mut self, size: u64) {
         if size > self.file_size {
-            safemem::write_bytes(
-                &mut self.good_buf[self.file_size as usize..size as usize],
-                0,
-            )
+            self.good_buf[self.file_size as usize..size as usize].fill(0);
         }
         let cur_file_size = self.file_size;
         self.file_size = size;

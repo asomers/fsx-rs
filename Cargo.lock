@@ -197,7 +197,6 @@ dependencies = [
  "rand_xorshift",
  "ringbuffer",
  "rstest",
- "safemem",
  "serde",
  "serde_derive",
  "tempfile",
@@ -639,12 +638,6 @@ dependencies = [
  "linux-raw-sys",
  "windows-sys",
 ]
-
-[[package]]
-name = "safemem"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef703b7cb59335eae2eb93ceb664c0eb7ea6bf567079d843e09420219668e072"
 
 [[package]]
 name = "semver"

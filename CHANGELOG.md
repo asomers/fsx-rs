@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Setting the `NO_COLOR` environment variable will now suppress all color in
+  the output.
+  ([#51](https://github.com/asomers/fsx-rs/pull/51))
+
 ### Changed
 
 - The MSRV is now 1.77.0.

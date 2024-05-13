@@ -7,7 +7,7 @@ license = "APSL-2.0"
 repository = "https://github.com/asomers/fsx-rs"
 description = "File System eXerciser"
 categories = ["filesystem", "development-tools::testing"]
-rust-version = "1.63"
+rust-version = "1.77.0"
 keywords = ["filesystem", "test"]
 
 [dependencies]

@@ -5,6 +5,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- The MSRV is now 1.77.0.
+  ([#52](https://github.com/asomers/fsx-rs/pull/52))
+
 ### Fixed
 
 - `fspacectl` operations now highlight a monitor range (supplied with `-m`)

@@ -578,7 +578,7 @@ struct Exerciser {
 
 impl Exerciser {
     cfg_if! {
-        if #[cfg(any(target_is = "macos", target_os = "dragonfly", target_os = "ios"))] {
+        if #[cfg(any(target_os = "macos", target_os = "dragonfly", target_os = "ios"))] {
             fn dosendfile(&mut self, buf: &mut [u8], offset: u64, size: usize) {
                 use std::{io::Read, os::fd::BorrowedFd, os::unix::net::UnixStream, thread};
                 use nix::sys::sendfile::sendfile;

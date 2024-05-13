@@ -3,6 +3,7 @@ fn main() {
     use std::{env, process::Command};
 
     println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_OS");
+    println!("cargo::rustc-check-cfg=cfg(have_fspacectl)");
 
     // When self-compiling, enable fspacectl if the build host is FreeBSD 14+
     // This is easier than using bindgen, which pulls in tons of dependencies.
@@ -24,4 +25,6 @@ fn main() {
 
 // When cross-compiling, never enable fspacectl
 #[cfg(not(target_os = "freebsd"))]
-fn main() {}
+fn main() {
+    println!("cargo::rustc-check-cfg=cfg(have_fspacectl)");
+}

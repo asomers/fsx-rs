@@ -27,6 +27,7 @@ use clap_verbosity_flag::{Verbosity, WarnLevel};
 use libc::c_void;
 use log::{debug, error, info, log, warn, Level};
 use nix::{
+    errno,
     sys::mman::{mmap, msync, munmap, MapFlags, MsFlags, ProtFlags},
     unistd::{sysconf, SysconfVar},
 };
@@ -62,7 +63,7 @@ cfg_if! {
                 diocgmediasize(fd, mediasize.as_mut_ptr())
                 .map(|_| mediasize.assume_init() as u64)
             }
-            .map_err(|_| io::Error::from_raw_os_error(nix::errno::errno()))
+            .map_err(|_| io::Error::from_raw_os_error(errno::Errno::last_raw()))
         }
     } else if #[cfg(any(target_os = "linux"))] {
         fn mediasize(fd: RawFd) -> io::Result<u64> {
@@ -985,14 +986,15 @@ impl Exerciser {
                 map_size.try_into().unwrap(),
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
-                Some(self.file.as_fd()),
+                self.file.as_fd(),
                 offset as i64 - pg_offset as i64,
             )
             .unwrap();
-            (p as *mut u8)
+            p.as_ptr()
+                .cast::<u8>()
                 .add(pg_offset)
                 .copy_to(buf.as_mut_ptr(), size);
-            self.check_eofpage(offset, p, size);
+            self.check_eofpage(offset, p.as_ptr(), size);
         }
     }
 
@@ -1011,15 +1013,18 @@ impl Exerciser {
                 map_size.try_into().unwrap(),
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
-                Some(self.file.as_fd()),
+                self.file.as_fd(),
                 offset as i64 - pg_offset as i64,
             )
             .unwrap();
-            ((p as *mut u8).add(pg_offset)).copy_from(buf.as_ptr(), size);
+            p.as_ptr()
+                .cast::<u8>()
+                .add(pg_offset)
+                .copy_from(buf.as_ptr(), size);
             if !self.nomsyncafterwrite {
                 msync(p, map_size, MsFlags::MS_SYNC).unwrap();
             }
-            self.check_eofpage(offset, p, size);
+            self.check_eofpage(offset, p.as_ptr(), size);
             munmap(p, map_size).unwrap();
         }
     }
@@ -1446,7 +1451,7 @@ impl Exerciser {
                 len.try_into().unwrap(),
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_FILE | MapFlags::MAP_SHARED,
-                Some(self.file.as_fd()),
+                self.file.as_fd(),
                 0,
             )
             .unwrap();

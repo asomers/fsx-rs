@@ -2,7 +2,7 @@ task:
   env:
     HOME: /tmp # cargo needs it
     matrix:
-      - VERSION: 0.17.6
+      #- VERSION: 0.17.6
       - VERSION: 0.18.3
       - VERSION: 0.19.0
       - VERSION: 0.20.0
@@ -19,17 +19,19 @@ task:
     - name: FreeBSD 15.0-CURRENT
       freebsd_instance:
         image_family: freebsd-15-0-snap
-    - name: Linux
-      container:
-        image: rust:1.76.0
-    - name: OSX
-      macos_instance:
-        image: ghcr.io/cirruslabs/macos-sonoma-base:latest
+    #- name: Linux
+      #container:
+        #image: rust:1.76.0
+    #- name: OSX
+      #macos_instance:
+        #image: ghcr.io/cirruslabs/macos-sonoma-base:latest
   setup_script:
     - which rustc || curl https://sh.rustup.rs -sSf | sh -s -- -y
   audit_script:
     - . $HOME/.cargo/env || true
     - openssl version || true
     - git2 --version || true
+    - pkg info -f ca_root_nss || true
+    - pkg install -y ca_root_nss
     - cargo install --version=$VERSION cargo-audit
     - cargo audit

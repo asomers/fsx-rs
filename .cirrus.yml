@@ -31,15 +31,11 @@ check: &CHECK
 task:
   env:
     VERSION: 1.77.0
-  name: FreeBSD 13.2 MSRV
+  name: FreeBSD 13.3 MSRV
   freebsd_instance:
-    image: freebsd-13-2-release-amd64
+    image: freebsd-13-3-release-amd64
   << : *FREEBSD_SETUP
   << : *BUILD
-  audit_script:
-    - . $HOME/.cargo/env
-    - pkg install -y cargo-audit
-    - cargo audit
   before_cache_script: rm -rf $HOME/.cargo/registry/index
 
 task:
@@ -58,6 +54,11 @@ task:
     - . $HOME/.cargo/env
     - rustup component add rustfmt
     - cargo fmt -- --check --color=never
+  audit_script:
+    - . $HOME/.cargo/env
+    # install ca_root_nss due to https://github.com/rustsec/rustsec/issues/1137
+    - pkg install -y ca_root_nss cargo-audit
+    - cargo audit
   # Test our minimal version spec
   minver_test_script:
     - . $HOME/.cargo/env

@@ -267,6 +267,7 @@ dependencies = [
  "env_logger",
  "libc",
  "log",
+ "mdconfig",
  "nix",
  "pretty_assertions",
  "rand",
@@ -447,9 +448,9 @@ checksum = "7771682454392dfe62a909aba2c6efc6674e2ad0b678fbc33b154e2e1bd59b89"
 
 [[package]]
 name = "libc"
-version = "0.2.153"
+version = "0.2.155"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c198f91728a82281a64e1f4f9eeb25d82cb32a5de251c6bd1b5154d63a8e7bd"
+checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
 
 [[package]]
 name = "linux-raw-sys"
@@ -462,6 +463,17 @@ name = "log"
 version = "0.4.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
+
+[[package]]
+name = "mdconfig"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cff02ee7b2a0815081bdc7c3dc00681c30577072db35787ea392aef8857fe34b"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "nix",
+]
 
 [[package]]
 name = "memchr"

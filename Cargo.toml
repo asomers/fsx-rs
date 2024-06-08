@@ -17,6 +17,7 @@ clap-verbosity-flag = "2.1.1"
 env_logger = "0.11.1"
 libc = "0.2.139"
 log = "0.4.17"
+mdconfig = "0.2.0"
 nix = { version = "0.28.0", default-features = false, features = [ "feature", "fs", "ioctl", "mman", "zerocopy" ]}
 rand = { version = "0.8.5" }
 rand_xorshift = "0.3"

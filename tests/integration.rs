@@ -808,18 +808,29 @@ fn punch_hole_zero() {
 
 /// Tests that work on real device files
 mod blockdev {
-    use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::PathBuf};
-
     use cfg_if::cfg_if;
     use rstest::fixture;
 
     use super::*;
 
-    struct Md(PathBuf);
     cfg_if! {
-        if #[cfg(any(target_os = "freebsd", target_os = "netbsd"))] {
-            use std::path::Path;
+        if #[cfg(target_os = "freebsd")] {
+            use mdconfig::Md;
 
+            #[fixture]
+            fn md() -> Option<Md> {
+                mdconfig::Builder::swap(1 << 20).create().ok()
+            }
+        } else if #[cfg(target_os = "netbsd")] {
+            use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::{Path, PathBuf}};
+
+            struct Md(PathBuf);
+
+            impl Md {
+                fn path(&self) -> &Path {
+                    self.0.as_path()
+                }
+            }
             impl Drop for Md {
                 fn drop(&mut self) {
                     Command::new("mdconfig")
@@ -850,6 +861,14 @@ mod blockdev {
                 }
             }
         } else if #[cfg(target_os = "linux")] {
+            use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::{Path, PathBuf}};
+            struct Md(PathBuf);
+
+            impl Md {
+                fn path(&self) -> &Path {
+                    self.0.as_path()
+                }
+            }
             impl Drop for Md {
                 fn drop(&mut self) {
                     Command::new("losetup")
@@ -883,6 +902,8 @@ mod blockdev {
                 }
             }
         } else {
+            struct Md(PathBuf);
+
             #[fixture]
             fn md() -> Option<Md> {
                 unimplemented!()
@@ -919,7 +940,7 @@ truncate = 0",
             .arg(artifacts_dir.path())
             .arg("-f")
             .arg(cf.path())
-            .arg(md.0.as_path())
+            .arg(md.path())
             .assert()
             .success();
     }

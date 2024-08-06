@@ -863,7 +863,7 @@ impl Exerciser {
                 .open(&self.fname)
                 .expect("Cannot open file");
             let placeholder = mem::replace(&mut self.file, newfile);
-            placeholder.into_raw_fd();
+            let _ = placeholder.into_raw_fd();
         }
     }
 

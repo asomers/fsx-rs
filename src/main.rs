@@ -170,7 +170,8 @@ cfg_if! {
 /// Calculate the maximum field width needed to print numbers up to this size
 fn field_width(max: usize, hex: bool) -> usize {
     if hex {
-        2 + (8 * mem::size_of_val(&max) - max.leading_zeros() as usize + 3) / 4
+        2 + (8 * mem::size_of_val(&max) - max.leading_zeros() as usize)
+            .div_ceil(4)
     } else {
         1 + (max as f64).log(10.0) as usize
     }

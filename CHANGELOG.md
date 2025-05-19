@@ -13,6 +13,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Various dependency updates.
+  ([#50](https://github.com/asomers/fsx-rs/pull/50))
+  ([#51](https://github.com/asomers/fsx-rs/pull/51))
+  ([#60](https://github.com/asomers/fsx-rs/pull/60))
+
 - The MSRV is now 1.77.0.
   ([#52](https://github.com/asomers/fsx-rs/pull/52))
 

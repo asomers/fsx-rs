@@ -641,12 +641,11 @@ impl Exerciser {
                 rd.read_exact(buf).unwrap();
                 let (res, bytes_written) = jh.join().unwrap();
                 if res.is_err() {
-                    error!("sendfile returned {:?}", res);
+                    error!("sendfile returned {res:?}");
                     self.fail();
                 }
                 if bytes_written != size as i64 {
-                    error!("Short read with sendfile: {:#x} bytes instead of {:#x}",
-                           bytes_written, size);
+                    error!("Short read with sendfile: {bytes_written:#x} bytes instead of {size:#x}");
                     self.fail();
                 }
             }
@@ -736,7 +735,7 @@ impl Exerciser {
     fn check_buffers(&self, buf: &[u8], mut offset: u64) {
         let mut size = buf.len();
         if self.good_buf[offset as usize..offset as usize + size] != buf[..] {
-            error!("miscompare: offset= {:#x}, size = {:#x}", offset, size);
+            error!("miscompare: offset= {offset:#x}, size = {size:#x}");
             let mut i = 0;
             let mut n = 0;
             let mut good = 0;
@@ -780,7 +779,7 @@ impl Exerciser {
                 swidth = self.swidth
             );
             if op > 0 {
-                error!("Step# (mod 256) for a misdirected write may be {}", op);
+                error!("Step# (mod 256) for a misdirected write may be {op}");
             } else {
                 error!(
                     "Step# for the bad data is unknown; check HOLE and EXTEND \
@@ -972,7 +971,7 @@ impl Exerciser {
     fn doread(&mut self, buf: &mut [u8], offset: u64, size: usize) {
         let read = self.file.read_at(buf, offset).unwrap();
         if read < size {
-            error!("short read: {:#x} bytes instead of {:#x}", read, size);
+            error!("short read: {read:#x} bytes instead of {size:#x}");
             self.fail();
         }
     }
@@ -1034,7 +1033,7 @@ impl Exerciser {
         let buf = &self.good_buf[offset as usize..offset as usize + size];
         let written = self.file.write_at(buf, offset).unwrap();
         if written != size {
-            error!("short write: {:#x} bytes instead of {:#x}", written, size);
+            error!("short write: {written:#x} bytes instead of {size:#x}");
             self.fail();
         }
     }
@@ -1758,7 +1757,7 @@ impl Exerciser {
             let mut seeder = thread_rng();
             seeder.gen::<u64>()
         });
-        debug!("Using seed {}", seed);
+        debug!("Using seed {seed}");
         let mut oo = OpenOptions::new();
         oo.read(true).write(true);
         if !conf.blockmode {

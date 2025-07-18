@@ -1620,7 +1620,9 @@ impl Exerciser {
             posix_fallocate(self.file.as_raw_fd(), offset as i64, len as i64);
         match r {
             Ok(()) => (),
-            Err(nix::Error::EINVAL) => {
+            Err(nix::Error::EINVAL | nix::Error::EOPNOTSUPP) => {
+                // POSIX specifies either EINVAL or EOPNOTSUPPT to indicate that
+                // the file system does not support posix_fallocate.
                 eprintln!("Test file system does not support posix_fallocate.");
                 self.fail();
             }

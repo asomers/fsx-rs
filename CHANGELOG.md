@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - ReleaseDate
+
+### Fixed
+
+- Fixed `posix_fallocate` with recent versions of OpenZFS.
+  ([#62](https://github.com/asomers/fsx-rs/pull/62))
+
 ## [0.3.0] - 2025-05-19
 
 ### Added

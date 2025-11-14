@@ -75,7 +75,7 @@ cfg_if! {
                 blkgetsize64(fd, mediasize.as_mut_ptr())
                 .map(|_| mediasize.assume_init())
             }
-            .map_err(|_| io::Error::from_raw_os_error(nix::errno::errno()))
+            .map_err(|_| io::Error::from_raw_os_error(errno::Errno::last_raw()))
         }
     } else {
         fn mediasize(_fd: RawFd) -> io::Result<u64> {

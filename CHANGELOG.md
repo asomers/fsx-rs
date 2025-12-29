@@ -8,7 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Raised MSRV to 1.82.0.
-  ([#64](https://github.com/asomers/fsx-rs/pull/64))
+  ([#65](https://github.com/asomers/fsx-rs/pull/65))
 
 ## [0.3.1] - 2025-07-18
 

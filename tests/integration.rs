@@ -2,6 +2,12 @@
 
 use std::{ffi::CString, fs, io::Write, process::Command};
 
+// See https://github.com/assert-rs/assert_cmd/issues/258
+#[expect(
+    deprecated,
+    reason = "cargo_bin is deprecated, cargo_bin! is not, `use` does not \
+              differentiate them"
+)]
 use assert_cmd::{cargo::cargo_bin, prelude::*};
 use pretty_assertions::assert_eq;
 use rstest::rstest;

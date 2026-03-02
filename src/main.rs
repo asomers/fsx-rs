@@ -1039,6 +1039,7 @@ impl Exerciser {
     }
 
     /// Dump the contents of the oplog
+    #[allow(clippy::explicit_counter_loop)] // suggestion is too complicated
     fn dump_logfile(&self) {
         let mut i = self.steps + 1 - self.oplog.len() as u64;
         error!("Using seed {}", self.seed);

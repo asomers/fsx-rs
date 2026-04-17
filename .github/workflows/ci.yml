@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-freebsd:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - freebsd_version: "14.4"
+          rust_version: "1.82.0"
+        - freebsd_version: "15.0"
+          rust_version: "nightly"
+    name: FreeBSD ${{ matrix.freebsd_version }} ${{ matrix.rust_version }}
+    steps:
+    - uses: actions/checkout@v6
+    - name: Start VM
+      uses: vmactions/freebsd-vm@v1
+      with:
+        release: ${{ matrix.freebsd_version }}
+        usesh: true
+    - name: Install dependencies
+      shell: freebsd {0}
+      run: |
+        pkg install -y curl
+        fetch https://sh.rustup.rs -o rustup.sh
+        sh rustup.sh -y --profile=minimal --default-toolchain ${{ matrix.rust_version }}
+    - name: Build
+      shell: freebsd {0}
+      run: |
+        . $HOME/.cargo/env
+        cargo build
+    - name: Test
+      if: matrix.rust_version == 'nightly'
+      shell: freebsd {0}
+      run: |
+        . $HOME/.cargo/env
+        cargo test
+    - name: Clippy
+      if: matrix.rust_version == 'nightly'
+      shell: freebsd {0}
+      run: |
+        . $HOME/.cargo/env
+        rustup component add clippy
+        cargo clippy --all-targets -- -D warnings
+    - name: Fmt
+      if: matrix.rust_version == 'nightly'
+      shell: freebsd {0}
+      run: |
+        . $HOME/.cargo/env
+        rustup component add rustfmt
+        cargo fmt -- --check --color=never
+    - name: Audit
+      if: matrix.rust_version == 'nightly'
+      shell: freebsd {0}
+      run: |
+        . $HOME/.cargo/env
+        pkg install -y cargo-audit
+        cargo audit
+    - name: Minver
+      if: matrix.rust_version == 'nightly'
+      shell: freebsd {0}
+      run: |
+        . $HOME/.cargo/env
+        cargo update -Zdirect-minimal-versions
+        cargo check --all-targets
+
+  test-linux:
+    runs-on: ubuntu-latest
+    name: Linux nightly
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: clippy, rustfmt
+    - name: Run tests
+      run: |
+        cargo build
+        cargo test
+    - name: Clippy
+      run: |
+        cargo clippy --all-targets -- -D warnings
+    - name: Fmt
+      run: |
+        cargo fmt -- --check --color=never
+
+  check-netbsd:
+    runs-on: ubuntu-latest
+    name: NetBSD nightly
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@nightly
+    - name: Install dependencies
+      run: |
+        rustup target add x86_64-unknown-netbsd
+    - name: Check
+      run: |
+        cargo check --target x86_64-unknown-netbsd --all-features

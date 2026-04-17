@@ -15,59 +15,99 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - freebsd_version: "14.4"
+        - os: "freebsd"
+          os_version: "14.4"
           rust_version: "1.82.0"
-        - freebsd_version: "15.0"
+        - os: "netbsd"
+          os_version: "10.1"
+          rust_version: "1.82.0"
+        - os: "openbsd"
+          os_version: "7.8"
+          rust_version: "1.82.0"
+        - os: "freebsd"
+          freebsd_version: "15.0"
           rust_version: "nightly"
-    name: FreeBSD ${{ matrix.freebsd_version }} ${{ matrix.rust_version }}
+    name: ${{ matrix.os }} ${{ matrix.freebsd_version }} ${{ matrix.rust_version }}
     steps:
     - uses: actions/checkout@v6
+
     - name: Start VM
+      if: matrix.os == 'freebsd'
       uses: vmactions/freebsd-vm@v1
       with:
-        release: ${{ matrix.freebsd_version }}
+        release: ${{ matrix.os_version }}
         usesh: true
+        custom-shell-name: vmsh
+
+    - name: Start VM
+      if: matrix.os == 'netbsd'
+      uses: vmactions/netbsd-vm@v1
+      with:
+        release: ${{ matrix.os_version }}
+        usesh: true
+        custom-shell-name: vmsh
+
+    - name: Start VM
+      if: matrix.os == 'openbsd'
+      uses: vmactions/openbsd-vm@v1
+      with:
+        release: ${{ matrix.os_version }}
+        usesh: true
+        custom-shell-name: vmsh
+
     - name: Install dependencies
-      shell: freebsd {0}
+      if: matrix.os == 'freebsd'
+      shell: vmsh {0}
       run: |
         pkg install -y curl
         fetch https://sh.rustup.rs -o rustup.sh
         sh rustup.sh -y --profile=minimal --default-toolchain ${{ matrix.rust_version }}
+    - name: Install dependencies
+      if: matrix.os == 'netbsd'
+      shell: vmsh {0}
+      run: |
+        pkg_add curl
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - name: Install dependencies
+      if: matrix.os == 'openbsd'
+      shell: vmsh {0}
+      run: |
+        pkg_add rust
+
     - name: Build
-      shell: freebsd {0}
+      shell: vmsh {0}
       run: |
         . $HOME/.cargo/env
         cargo build
     - name: Test
-      if: matrix.rust_version == 'nightly'
-      shell: freebsd {0}
+      shell: vmsh {0}
       run: |
         . $HOME/.cargo/env
         cargo test
     - name: Clippy
       if: matrix.rust_version == 'nightly'
-      shell: freebsd {0}
+      shell: vmsh {0}
       run: |
         . $HOME/.cargo/env
         rustup component add clippy
         cargo clippy --all-targets -- -D warnings
     - name: Fmt
-      if: matrix.rust_version == 'nightly'
-      shell: freebsd {0}
+      if: matrix.rust_version == 'nightly' && matrix.os == 'freebsd'
+      shell: vmsh {0}
       run: |
         . $HOME/.cargo/env
         rustup component add rustfmt
         cargo fmt -- --check --color=never
     - name: Audit
-      if: matrix.rust_version == 'nightly'
-      shell: freebsd {0}
+      if: matrix.rust_version == 'nightly' && matrix.os == 'freebsd'
+      shell: vmsh {0}
       run: |
         . $HOME/.cargo/env
         pkg install -y cargo-audit
         cargo audit
     - name: Minver
-      if: matrix.rust_version == 'nightly'
-      shell: freebsd {0}
+      if: matrix.rust_version == 'nightly' && matrix.os == 'freebsd'
+      shell: vmsh {0}
       run: |
         . $HOME/.cargo/env
         cargo update -Zdirect-minimal-versions
@@ -91,16 +131,3 @@ jobs:
     - name: Fmt
       run: |
         cargo fmt -- --check --color=never
-
-  check-netbsd:
-    runs-on: ubuntu-latest
-    name: NetBSD nightly
-    steps:
-    - uses: actions/checkout@v6
-    - uses: dtolnay/rust-toolchain@nightly
-    - name: Install dependencies
-      run: |
-        rustup target add x86_64-unknown-netbsd
-    - name: Check
-      run: |
-        cargo check --target x86_64-unknown-netbsd --all-features

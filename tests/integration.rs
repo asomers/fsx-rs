@@ -892,7 +892,15 @@ mod blockdev {
                 }
             }
         } else {
+            use std::{path::{Path, PathBuf}};
+
             struct Md(PathBuf);
+
+            impl Md {
+                fn path(&self) -> &Path {
+                    self.0.as_path()
+                }
+            }
 
             #[fixture]
             fn md() -> Option<Md> {

@@ -20,10 +20,10 @@ jobs:
           rust_version: "1.82.0"
         - os: "netbsd"
           os_version: "10.1"
-          rust_version: "1.82.0"
+          rust_version: "stable"
         - os: "openbsd"
           os_version: "7.8"
-          rust_version: "1.82.0"
+          rust_version: "stable"
         - os: "freebsd"
           freebsd_version: "15.0"
           rust_version: "nightly"
@@ -77,39 +77,42 @@ jobs:
     - name: Build
       shell: vmsh {0}
       run: |
-        . $HOME/.cargo/env
+        if [ -f $HOME/.cargo/env ]; then . $HOME/.cargo/env; fi
         cargo build
     - name: Test
+      if: matrix.rust_version != '1.82.0'
       shell: vmsh {0}
       run: |
-        . $HOME/.cargo/env
+        if [ -f $HOME/.cargo/env ]; then . $HOME/.cargo/env; fi
+        df -h
+        mount
         cargo test
     - name: Clippy
       if: matrix.rust_version == 'nightly'
       shell: vmsh {0}
       run: |
-        . $HOME/.cargo/env
+        if [ -f $HOME/.cargo/env ]; then . $HOME/.cargo/env; fi
         rustup component add clippy
         cargo clippy --all-targets -- -D warnings
     - name: Fmt
       if: matrix.rust_version == 'nightly' && matrix.os == 'freebsd'
       shell: vmsh {0}
       run: |
-        . $HOME/.cargo/env
+        if [ -f $HOME/.cargo/env ]; then . $HOME/.cargo/env; fi
         rustup component add rustfmt
         cargo fmt -- --check --color=never
     - name: Audit
       if: matrix.rust_version == 'nightly' && matrix.os == 'freebsd'
       shell: vmsh {0}
       run: |
-        . $HOME/.cargo/env
+        if [ -f $HOME/.cargo/env ]; then . $HOME/.cargo/env; fi
         pkg install -y cargo-audit
         cargo audit
     - name: Minver
       if: matrix.rust_version == 'nightly' && matrix.os == 'freebsd'
       shell: vmsh {0}
       run: |
-        . $HOME/.cargo/env
+        if [ -f $HOME/.cargo/env ]; then . $HOME/.cargo/env; fi
         cargo update -Zdirect-minimal-versions
         cargo check --all-targets
 

@@ -2,7 +2,7 @@
 
 Test file system I/O routines for correctness, with random input.
 
-[![Build Status](https://api.cirrus-ci.com/github/asomers/fsx-rs.svg)](https://cirrus-ci.com/github/asomers/fsx-rs)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/asomers/fsx-rs/ci.yml?branch=master&style=flat-square)](https://github.com/asomers/fsx-rs/actions/workflows/ci.yml?query=branch%3Amaster)
 [![Crates.io](https://img.shields.io/crates/v/fsx.svg)](https://crates.io/crates/fsx)
 
 # Overview

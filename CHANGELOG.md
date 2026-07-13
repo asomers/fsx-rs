@@ -5,6 +5,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Fixed the build on vanilla FreeBSD RISC-V.
+  ([#65](https://github.com/asomers/fsx-rs/pull/65))
+
 ### Changed
 
 - Raised MSRV to 1.82.0.
